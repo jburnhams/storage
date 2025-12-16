@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleRequest } from "../src/worker";
+import { handleRequest } from "../../src/worker";
 
 // Mock environment with minimal D1 database
 const mockEnv = {
