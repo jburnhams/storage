@@ -28,8 +28,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run tests
-        run: npm test -- --run
+      - name: Run unit tests
+        run: npm run test:unit
 
-      - name: Run coverage
-        run: npm run test:coverage
+      - name: Run unit test coverage
+        run: npm run test:coverage:unit
