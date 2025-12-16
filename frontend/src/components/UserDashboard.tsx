@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { UserResponse, SessionResponse } from "../types";
+import { formatDate } from "../utils/date";
 
 interface UserDashboardProps {
   user: UserResponse;
@@ -21,10 +22,6 @@ export function UserDashboard({ user }: UserDashboardProps) {
         setLoading(false);
       });
   }, []);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
 
   return (
     <section className="dashboard-section">

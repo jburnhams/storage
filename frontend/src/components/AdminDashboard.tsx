@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { UserResponse, SessionResponse } from "../types";
+import { formatDate } from "../utils/date";
 
 export function AdminDashboard() {
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -11,27 +12,20 @@ export function AdminDashboard() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    // Fetch all users
-    fetch("/api/users")
-      .then((res) => res.json())
-      .then((data) => {
-        setUsers(data);
+    // Fetch all users and sessions in parallel
+    Promise.all([
+      fetch("/api/users").then((res) => res.json()),
+      fetch("/api/sessions").then((res) => res.json()),
+    ])
+      .then(([usersData, sessionsData]) => {
+        setUsers(usersData);
+        setSessions(sessionsData);
         setLoadingUsers(false);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch users:", err);
-        setLoadingUsers(false);
-      });
-
-    // Fetch all sessions
-    fetch("/api/sessions")
-      .then((res) => res.json())
-      .then((data) => {
-        setSessions(data);
         setLoadingSessions(false);
       })
       .catch((err) => {
-        console.error("Failed to fetch sessions:", err);
+        console.error("Failed to fetch data:", err);
+        setLoadingUsers(false);
         setLoadingSessions(false);
       });
   }, []);
@@ -66,10 +60,6 @@ export function AdminDashboard() {
     } finally {
       setPromoting(false);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
   };
 
   return (

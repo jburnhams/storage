@@ -33,7 +33,7 @@ export function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch("/auth/logout", { method: "GET" });
+      await fetch("/auth/logout", { method: "POST" });
       setUser(null);
       window.location.href = "/";
     } catch (err) {

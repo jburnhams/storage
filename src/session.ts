@@ -214,39 +214,60 @@ export async function getAllUsers(env: Env): Promise<User[]> {
  * Get all sessions (admin only)
  */
 export async function getAllSessions(env: Env): Promise<SessionResponse[]> {
+  interface SessionWithUser {
+    session_id: string;
+    session_user_id: number;
+    session_created_at: string;
+    session_expires_at: string;
+    session_last_used_at: string;
+    user_id: number;
+    user_email: string;
+    user_name: string;
+    user_profile_picture: string | null;
+    user_is_admin: number;
+    user_created_at: string;
+    user_updated_at: string;
+    user_last_login_at: string | null;
+  }
+
   const result = await env.DB.prepare(
     `SELECT
-       s.id, s.user_id, s.created_at, s.expires_at, s.last_used_at,
-       u.id as user_id, u.email, u.name, u.profile_picture, u.is_admin,
-       u.created_at as user_created_at, u.updated_at, u.last_login_at
+       s.id as session_id,
+       s.user_id as session_user_id,
+       s.created_at as session_created_at,
+       s.expires_at as session_expires_at,
+       s.last_used_at as session_last_used_at,
+       u.id as user_id,
+       u.email as user_email,
+       u.name as user_name,
+       u.profile_picture as user_profile_picture,
+       u.is_admin as user_is_admin,
+       u.created_at as user_created_at,
+       u.updated_at as user_updated_at,
+       u.last_login_at as user_last_login_at
      FROM sessions s
      JOIN users u ON s.user_id = u.id
      WHERE s.expires_at > datetime('now')
      ORDER BY s.created_at DESC`
-  ).all();
+  ).all<SessionWithUser>();
 
-  const sessions: SessionResponse[] = [];
-  for (const row of result.results || []) {
-    sessions.push({
-      id: (row as any).id,
-      user_id: (row as any).user_id,
-      created_at: (row as any).created_at,
-      expires_at: (row as any).expires_at,
-      last_used_at: (row as any).last_used_at,
-      user: userToResponse({
-        id: (row as any).user_id,
-        email: (row as any).email,
-        name: (row as any).name,
-        profile_picture: (row as any).profile_picture,
-        is_admin: (row as any).is_admin,
-        created_at: (row as any).user_created_at,
-        updated_at: (row as any).updated_at,
-        last_login_at: (row as any).last_login_at,
-      }),
-    });
-  }
-
-  return sessions;
+  return (result.results || []).map((row) => ({
+    id: row.session_id,
+    user_id: row.session_user_id,
+    created_at: row.session_created_at,
+    expires_at: row.session_expires_at,
+    last_used_at: row.session_last_used_at,
+    user: userToResponse({
+      id: row.user_id,
+      email: row.user_email,
+      name: row.user_name,
+      profile_picture: row.user_profile_picture,
+      is_admin: row.user_is_admin,
+      created_at: row.user_created_at,
+      updated_at: row.user_updated_at,
+      last_login_at: row.user_last_login_at,
+    }),
+  }));
 }
 
 /**

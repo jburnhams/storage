@@ -195,6 +195,15 @@ async function handleCallback(
  * Handle logout
  */
 async function handleLogout(request: Request, env: Env): Promise<Response> {
+  // Logout must be POST to prevent CSRF attacks
+  if (request.method !== "POST") {
+    return createErrorResponse(
+      "METHOD_NOT_ALLOWED",
+      "Only POST method is allowed for logout",
+      405
+    );
+  }
+
   const sessionId = getSessionIdFromCookie(request);
   if (sessionId) {
     await deleteSession(sessionId, env);

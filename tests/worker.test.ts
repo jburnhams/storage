@@ -57,12 +57,22 @@ describe("Storage Auth Worker", () => {
     });
 
     it("/auth/logout redirects to home and clears cookie", async () => {
-      const request = new Request("https://storage.test/auth/logout");
+      const request = new Request("https://storage.test/auth/logout", {
+        method: "POST",
+      });
       const response = await handleRequest(request, mockEnv, dummyCtx);
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe("/");
       const cookie = response.headers.get("Set-Cookie");
       expect(cookie).toContain("Max-Age=0");
+    });
+
+    it("/auth/logout rejects GET requests", async () => {
+      const request = new Request("https://storage.test/auth/logout");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(405);
+      const result = await response.json();
+      expect(result.error).toBe("METHOD_NOT_ALLOWED");
     });
   });
 
