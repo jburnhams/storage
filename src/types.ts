@@ -19,6 +19,33 @@ export interface Session {
   last_used_at: string;
 }
 
+export interface ValueEntry {
+    id: number;
+    hash: string;
+    string_value: string | null;
+    blob_value: unknown | null;
+    type: string;
+    created_at: string;
+}
+
+export interface KeyValueEntry {
+  id: number;
+  key: string;
+  value_id: number;
+  filename: string | null;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Joined representation for API
+export interface KeyValueEntryJoined extends KeyValueEntry {
+    hash: string;
+    string_value: string | null;
+    blob_value: unknown | null;
+    type: string;
+}
+
 // ===== API Response Types =====
 
 export interface UserResponse {
@@ -44,6 +71,29 @@ export interface SessionResponse {
 export interface ErrorResponse {
   error: string;
   message: string;
+}
+
+export interface KeyValueEntryResponse {
+  id: number;
+  key: string;
+  string_value: string | null;
+  has_blob: boolean;
+  secret: string; // Map hash to secret for API compatibility
+  type: string;
+  filename: string | null;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== API Request Types =====
+
+export interface CreateEntryRequest {
+  key: string;
+  value: string; // If type implies blob (e.g. multipart upload), this might be handled differently
+  type: string;
+  filename?: string;
+  // For JSON API usage, we might accept base64 for blobs or rely on multipart/form-data
 }
 
 // ===== OAuth Types =====
