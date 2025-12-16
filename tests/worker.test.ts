@@ -1,151 +1,112 @@
 import { describe, expect, it } from "vitest";
 import { handleRequest } from "../src/worker";
 
+// Mock environment with minimal D1 database
+const mockEnv = {
+  DB: {
+    prepare: () => ({
+      bind: () => ({
+        run: async () => ({}),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+      }),
+      run: async () => ({}),
+      first: async () => null,
+      all: async () => ({ results: [] }),
+    }),
+  },
+  GOOGLE_CLIENT_ID: "test-client-id",
+  GOOGLE_CLIENT_SECRET: "test-client-secret",
+  SESSION_SECRET: "test-session-secret",
+};
+
 const dummyCtx = {
   waitUntil: () => {},
 };
 
-describe("worker", () => {
+describe("Storage Auth Worker", () => {
   it("serves the frontend at root path", async () => {
-    const request = new Request("https://worker.test/");
-    const response = await handleRequest(request, {}, dummyCtx);
+    const request = new Request("https://storage.test/");
+    const response = await handleRequest(request, mockEnv, dummyCtx);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("responds to health check", async () => {
-    const request = new Request("https://worker.test/health");
-    const response = await handleRequest(request, {}, dummyCtx);
+    const request = new Request("https://storage.test/health");
+    const response = await handleRequest(request, mockEnv, dummyCtx);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("ok");
   });
 
   it("returns 404 for unknown paths", async () => {
-    const request = new Request("https://worker.test/unknown");
-    const response = await handleRequest(request, {}, dummyCtx);
+    const request = new Request("https://storage.test/unknown");
+    const response = await handleRequest(request, mockEnv, dummyCtx);
     expect(response.status).toBe(404);
   });
 
-  describe("/api/calculate", () => {
-    it("performs addition", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 5, b: 3, operation: "add" }),
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(200);
-      const result = await response.json();
-      expect(result).toEqual({
-        result: 8,
-        operation: "add",
-        operands: { a: 5, b: 3 },
-      });
+  describe("Auth Routes", () => {
+    it("/auth/login redirects to Google OAuth", async () => {
+      const request = new Request("https://storage.test/auth/login");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(302);
+      const location = response.headers.get("Location");
+      expect(location).toContain("accounts.google.com");
+      expect(location).toContain("client_id=test-client-id");
     });
 
-    it("performs subtraction", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
+    it("/auth/logout redirects to home and clears cookie", async () => {
+      const request = new Request("https://storage.test/auth/logout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 10, b: 4, operation: "subtract" }),
       });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(200);
-      const result = await response.json();
-      expect(result).toEqual({
-        result: 6,
-        operation: "subtract",
-        operands: { a: 10, b: 4 },
-      });
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(302);
+      expect(response.headers.get("Location")).toBe("/");
+      const cookie = response.headers.get("Set-Cookie");
+      expect(cookie).toContain("Max-Age=0");
     });
 
-    it("performs multiplication", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 6, b: 7, operation: "multiply" }),
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(200);
-      const result = await response.json();
-      expect(result).toEqual({
-        result: 42,
-        operation: "multiply",
-        operands: { a: 6, b: 7 },
-      });
-    });
-
-    it("performs division", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 10, b: 2, operation: "divide" }),
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(200);
-      const result = await response.json();
-      expect(result).toEqual({
-        result: 5,
-        operation: "divide",
-        operands: { a: 10, b: 2 },
-      });
-    });
-
-    it("returns error for division by zero", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 10, b: 0, operation: "divide" }),
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(400);
-      const result = await response.json();
-      expect(result.error).toBe("CALCULATION_ERROR");
-      expect(result.message).toContain("Division by zero");
-    });
-
-    it("rejects GET requests", async () => {
-      const request = new Request("https://worker.test/api/calculate");
-      const response = await handleRequest(request, {}, dummyCtx);
+    it("/auth/logout rejects GET requests", async () => {
+      const request = new Request("https://storage.test/auth/logout");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
       expect(response.status).toBe(405);
       const result = await response.json();
       expect(result.error).toBe("METHOD_NOT_ALLOWED");
     });
+  });
 
-    it("returns error for invalid JSON", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        body: "not json",
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(400);
+  describe("API Routes - Unauthenticated", () => {
+    it("/api/user returns 401 without session", async () => {
+      const request = new Request("https://storage.test/api/user");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(401);
       const result = await response.json();
-      expect(result.error).toBe("INVALID_JSON");
+      expect(result.error).toBe("UNAUTHORIZED");
     });
 
-    it("returns error for missing operands", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 5, operation: "add" }),
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(400);
+    it("/api/session returns 401 without session", async () => {
+      const request = new Request("https://storage.test/api/session");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(401);
       const result = await response.json();
-      expect(result.error).toBe("INVALID_OPERANDS");
+      expect(result.error).toBe("UNAUTHORIZED");
     });
 
-    it("returns error for invalid operation", async () => {
-      const request = new Request("https://worker.test/api/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ a: 5, b: 3, operation: "invalid" }),
-      });
-      const response = await handleRequest(request, {}, dummyCtx);
-      expect(response.status).toBe(400);
+    it("/api/users returns 401 without session", async () => {
+      const request = new Request("https://storage.test/api/users");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(401);
       const result = await response.json();
-      expect(result.error).toBe("INVALID_OPERATION");
+      expect(result.error).toBe("UNAUTHORIZED");
+    });
+
+    it("/api/sessions returns 401 without session", async () => {
+      const request = new Request("https://storage.test/api/sessions");
+      const response = await handleRequest(request, mockEnv, dummyCtx);
+      expect(response.status).toBe(401);
+      const result = await response.json();
+      expect(result.error).toBe("UNAUTHORIZED");
     });
   });
 });
