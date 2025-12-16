@@ -1,0 +1,95 @@
+import type { Env, GoogleTokenResponse, GoogleUserInfo } from "./types";
+
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+
+/**
+ * Generate OAuth state parameter for CSRF protection
+ */
+export function generateState(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+}
+
+/**
+ * Get the redirect URI based on the request host
+ */
+export function getRedirectUri(request: Request): string {
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}/auth/callback`;
+}
+
+/**
+ * Generate Google OAuth authorization URL
+ */
+export function getGoogleAuthUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string
+): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    state: state,
+    access_type: "online",
+    prompt: "select_account",
+  });
+
+  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for access token
+ */
+export async function exchangeCodeForToken(
+  code: string,
+  redirectUri: string,
+  env: Env
+): Promise<GoogleTokenResponse> {
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      code: code,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }).toString(),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to exchange code for token: ${error}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get user info from Google using access token
+ */
+export async function getGoogleUserInfo(
+  accessToken: string
+): Promise<GoogleUserInfo> {
+  const response = await fetch(GOOGLE_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to get user info: ${error}`);
+  }
+
+  return await response.json();
+}

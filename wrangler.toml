@@ -1,4 +1,4 @@
-name = "template"
+name = "storage"
 main = "src/worker.ts"
 tsconfig = "./tsconfig.json"
 compatibility_date = "2025-02-14"
@@ -6,3 +6,16 @@ compatibility_date = "2025-02-14"
 [build]
 command = "npm run generate:frontend"
 watch_dir = ["frontend", "scripts", "src/frontend"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "storage-db"
+database_id = "preview_database_id"
+migrations_dir = "migrations"
+
+# Environment variables (secrets should be set via wrangler secret put)
+# Required secrets:
+# - GOOGLE_CLIENT_ID: Google OAuth client ID
+# - GOOGLE_CLIENT_SECRET: Google OAuth client secret
+# - SESSION_SECRET: Secret for signing session cookies (generate with: openssl rand -hex 32)

@@ -1,0 +1,12 @@
+# Local development environment variables
+# Copy this file to .dev.vars and fill in your actual values
+# DO NOT commit .dev.vars to version control
+
+# Google OAuth Credentials
+# Get these from: https://console.cloud.google.com
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+
+# Session Secret
+# Generate with: openssl rand -hex 32
+SESSION_SECRET=your_session_secret_here
