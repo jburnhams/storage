@@ -1,0 +1,40 @@
+{
+  "name": "js-fullstack-template",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "npm run generate:frontend",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "generate:frontend": "node ./scripts/embed-frontend.mjs",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "vitest --config vitest.config.backend.ts",
+    "test:frontend": "vitest --config vitest.config.frontend.ts",
+    "test:coverage": "npm run test:coverage:backend && npm run test:coverage:frontend",
+    "test:coverage:backend": "vitest run --config vitest.config.backend.ts --coverage",
+    "test:coverage:frontend": "vitest run --config vitest.config.frontend.ts --coverage"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251109.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "@vitest/coverage-v8": "^4.0.8",
+    "jsdom": "^27.1.0",
+    "miniflare": "^4.20251105.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.2",
+    "vitest": "^4.0.8",
+    "wrangler": "^3.105.1"
+  }
+}
