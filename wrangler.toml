@@ -14,8 +14,7 @@ database_name = "storage"
 database_id = "b1c3f037-ad29-4440-a670-f2cfdfdb36a3"
 migrations_dir = "migrations"
 
-# Environment variables (secrets should be set via wrangler secret put)
-# Required secrets:
-# - GOOGLE_CLIENT_ID: Google OAuth client ID
-# - GOOGLE_CLIENT_SECRET: Google OAuth client secret
-# - SESSION_SECRET: Secret for signing session cookies (generate with: openssl rand -hex 32)
+[vars]
+GOOGLE_CLIENT_ID = "GOOGLE_CLIENT_ID"
+GOOGLE_CLIENT_SECRET = "GOOGLE_CLIENT_SECRET"
+SESSION_SECRET = "SESSION_SECRET"
