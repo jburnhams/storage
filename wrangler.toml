@@ -10,8 +10,8 @@ watch_dir = ["frontend", "scripts", "src/frontend"]
 # D1 Database binding
 [[d1_databases]]
 binding = "DB"
-database_name = "storage-db"
-database_id = "preview_database_id"
+database_name = "storage"
+database_id = "b1c3f037-ad29-4440-a670-f2cfdfdb36a3"
 migrations_dir = "migrations"
 
 # Environment variables (secrets should be set via wrangler secret put)
