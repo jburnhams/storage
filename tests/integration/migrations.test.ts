@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { Miniflare } from "miniflare";
-import { createMiniflareInstance, runMigrations } from "./setup";
+import { createMiniflareInstance, runMigrations, cleanDatabase } from "./setup";
 
 describe("D1 Database Migrations", () => {
   let mf: Miniflare;
@@ -9,6 +9,11 @@ describe("D1 Database Migrations", () => {
   beforeAll(async () => {
     mf = await createMiniflareInstance({});
     db = await mf.getD1Database("DB");
+    await runMigrations(db);
+  });
+
+  beforeEach(async () => {
+    await cleanDatabase(db);
   });
 
   afterAll(async () => {
@@ -16,8 +21,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should successfully run migrations and create tables", async () => {
-    await runMigrations(db);
-
     // Verify users table exists
     const usersTableResult = await db
       .prepare(
@@ -40,8 +43,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should create all required indexes", async () => {
-    await runMigrations(db);
-
     // Get all indexes
     const indexes = await db
       .prepare(`SELECT name FROM sqlite_master WHERE type='index'`)
@@ -59,8 +60,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should have correct schema for users table", async () => {
-    await runMigrations(db);
-
     const schema = await db
       .prepare(`PRAGMA table_info(users)`)
       .all();
@@ -78,8 +77,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should have correct schema for sessions table", async () => {
-    await runMigrations(db);
-
     const schema = await db
       .prepare(`PRAGMA table_info(sessions)`)
       .all();
@@ -94,8 +91,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should enforce foreign key constraint on sessions table", async () => {
-    await runMigrations(db);
-
     // Get foreign keys for sessions table
     const foreignKeys = await db
       .prepare(`PRAGMA foreign_key_list(sessions)`)
@@ -111,8 +106,7 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should handle idempotent migrations (IF NOT EXISTS)", async () => {
-    // Run migrations twice
-    await runMigrations(db);
+    // Run migrations again to test idempotency
     await runMigrations(db);
 
     // Should not throw and tables should still exist
@@ -126,8 +120,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should enforce unique constraint on user email", async () => {
-    await runMigrations(db);
-
     // Insert first user
     await db
       .prepare(`INSERT INTO users (email, name) VALUES (?, ?)`)
@@ -144,8 +136,6 @@ describe("D1 Database Migrations", () => {
   });
 
   it("should cascade delete sessions when user is deleted", async () => {
-    await runMigrations(db);
-
     // Insert user
     const userResult = await db
       .prepare(`INSERT INTO users (email, name) VALUES (?, ?)`)

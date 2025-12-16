@@ -9,6 +9,25 @@ export interface TestEnv {
   SESSION_SECRET: string;
 }
 
+export interface UserRow {
+  id: number;
+  email: string;
+  name: string;
+  profile_picture: string | null;
+  is_admin: number;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+}
+
+export interface SessionRow {
+  id: string;
+  user_id: number;
+  created_at: string;
+  expires_at: string;
+  last_used_at: string;
+}
+
 /**
  * Creates a Miniflare instance configured for testing
  * with D1 database and secrets
