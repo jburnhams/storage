@@ -19,17 +19,31 @@ export interface Session {
   last_used_at: string;
 }
 
+export interface ValueEntry {
+    id: number;
+    hash: string;
+    string_value: string | null;
+    blob_value: unknown | null;
+    type: string;
+    created_at: string;
+}
+
 export interface KeyValueEntry {
   id: number;
   key: string;
-  string_value: string | null;
-  blob_value: unknown | null; // D1 returns array buffer for blobs typically, or specific D1 type
-  secret: string;
-  type: string;
+  value_id: number;
   filename: string | null;
   user_id: number;
   created_at: string;
   updated_at: string;
+}
+
+// Joined representation for API
+export interface KeyValueEntryJoined extends KeyValueEntry {
+    hash: string;
+    string_value: string | null;
+    blob_value: unknown | null;
+    type: string;
 }
 
 // ===== API Response Types =====
@@ -63,9 +77,8 @@ export interface KeyValueEntryResponse {
   id: number;
   key: string;
   string_value: string | null;
-  // We typically don't send blob_value in listing/json response unless specifically requested
   has_blob: boolean;
-  secret: string;
+  secret: string; // Map hash to secret for API compatibility
   type: string;
   filename: string | null;
   user_id: number;

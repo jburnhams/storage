@@ -613,39 +613,44 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
     const hasNewContent = !!file || (stringValue !== null && stringValue !== "");
     // Note: frontend sends "" for stringValue if not text type or empty.
 
-    // If it's a blob type entry and no new file, and stringValue is empty,
-    // assume we keep existing content.
-    // BUT if the user explicitly wants to empty a text file, stringValue would be "".
-    // We need to differentiate.
-    // For now, let's assume if file is NOT provided, and type suggests blob/file,
-    // we keep existing blob.
+    // Refactored Update Logic with Value Deduping
+    // We need to decide if we are changing content (linking to new ValueEntry) or just renaming (Key only).
 
+    // If file provided -> New Content (Blob)
     if (file) {
        blobValue = await file.arrayBuffer();
        filename = file.name;
-       finalStringValue = null; // Use blob
+       finalStringValue = null;
     } else {
-        // No file uploaded.
-        if (existing.blob_value) {
-            // Existing is blob.
-            if (!stringValue) {
-                // No string value provided either.
-                // Keep existing blob.
-                blobValue = existing.blob_value as ArrayBuffer; // In worker context it's array buffer
-                filename = existing.filename || undefined;
-                finalStringValue = null;
-            } else {
-                 // User provided string value to replace blob?
-                 // Or frontend sent empty string?
-                 // Let's assume replacing with text.
-            }
+        // No file.
+        // If stringValue is non-empty, it's new content.
+        // If stringValue is empty string (""), it might be cleared text OR just missing from form?
+        // Frontend sends "" for null/missing usually.
+        // If stringValue is null (not in form), definitely no change.
+
+        // Complex case: Changing from Blob to Text?
+        // Complex case: Changing Key only?
+
+        // Heuristic:
+        // If stringValue is null, we preserve existing.
+        // If stringValue is "" AND existing was blob, we preserve existing (don't clear blob with empty string implicitly).
+        // If stringValue is "" AND existing was string, we update to empty string?
+
+        if (stringValue === null) {
+             // Preserving existing content.
+             // We pass nulls to updateEntry, which handles "preservation" logic now?
+             // Actually, storage.ts updateEntry creates new ValueEntry if passed non-nulls.
+             // If we pass nulls, it skips value update.
+             finalStringValue = null;
+             blobValue = null;
+        } else if (stringValue === "" && existing.blob_value) {
+             // Treat as preserve.
+             finalStringValue = null;
+             blobValue = null;
         } else {
-            // Existing is string.
-            // If stringValue is provided (even empty), update it.
-            // If null, keep existing? FormData.get returns null if missing, "" if empty.
-            if (stringValue === null) {
-                finalStringValue = existing.string_value;
-            }
+             // It's a string update (possibly empty).
+             // But if it matches existing string, we can optimization skip?
+             // findOrCreateValue will handle deduping anyway.
         }
     }
 

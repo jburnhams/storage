@@ -1,8 +1,7 @@
-import type { Env, KeyValueEntry, User } from "./types";
+import type { Env, KeyValueEntryJoined, User, ValueEntry } from "./types";
 
 /**
  * Calculate MD5 hash of content
- * Note: crypto.subtle.digest returns ArrayBuffer, we convert to hex string
  */
 async function calculateSecret(content: string | ArrayBuffer): Promise<string> {
   const encoder = new TextEncoder();
@@ -10,6 +9,57 @@ async function calculateSecret(content: string | ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest("MD5", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Find existing value entry or create new one.
+ */
+async function findOrCreateValue(
+    env: Env,
+    stringValue: string | null,
+    blobValue: ArrayBuffer | null,
+    type: string
+): Promise<ValueEntry> {
+    const content = stringValue !== null ? stringValue : blobValue!;
+    const hash = await calculateSecret(content);
+
+    // Look up by hash
+    // We also check type, and ideally content to avoid collision.
+    // D1 SELECT blob comparison might be tricky, so we rely on hash + type + string check.
+    // If blob, we might rely on hash strength (MD5 is weak but sufficient for this context probably).
+    // Or we fetch and compare in JS? Fetching large blobs is expensive.
+    // Let's rely on Hash + Type + StringValue check.
+
+    let query = "SELECT * FROM value_entries WHERE hash = ? AND type = ?";
+    const params: any[] = [hash, type];
+
+    if (stringValue !== null) {
+        query += " AND string_value = ?";
+        params.push(stringValue);
+    } else {
+        query += " AND string_value IS NULL";
+    }
+
+    const existing = await env.DB.prepare(query).bind(...params).first<ValueEntry>();
+
+    if (existing) {
+        return existing;
+    }
+
+    // Create new
+    const insert = `
+        INSERT INTO value_entries (hash, string_value, blob_value, type)
+        VALUES (?, ?, ?, ?)
+        RETURNING *
+    `;
+
+    const newEntry = await env.DB.prepare(insert)
+        .bind(hash, stringValue, blobValue, type)
+        .first<ValueEntry>();
+
+    if (!newEntry) throw new Error("Failed to create value entry");
+
+    return newEntry;
 }
 
 export async function createEntry(
@@ -20,42 +70,51 @@ export async function createEntry(
   stringValue: string | null,
   blobValue: ArrayBuffer | null,
   filename?: string
-): Promise<KeyValueEntry> {
+): Promise<KeyValueEntryJoined> {
   // Validate constraints
   if ((stringValue === null && blobValue === null) || (stringValue !== null && blobValue !== null)) {
     throw new Error("Either string_value or blob_value must be set, but not both.");
   }
 
-  const content = stringValue !== null ? stringValue : blobValue!;
-  const secret = await calculateSecret(content);
+  const valueEntry = await findOrCreateValue(env, stringValue, blobValue, type);
 
   const query = `
-    INSERT INTO key_value_entries (key, string_value, blob_value, secret, type, filename, user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO key_value_entries (key, value_id, filename, user_id)
+    VALUES (?, ?, ?, ?)
     RETURNING *
   `;
 
-  // For D1, blob should be ArrayBuffer or Uint8Array.
   const result = await env.DB.prepare(query)
-    .bind(key, stringValue, blobValue, secret, type, filename || null, userId)
-    .first<KeyValueEntry>();
+    .bind(key, valueEntry.id, filename || null, userId)
+    .first<any>();
 
   if (!result) {
     throw new Error("Failed to create entry");
   }
 
-  return result;
+  return { ...result, ...valueEntry, secret: valueEntry.hash };
 }
 
-export async function getEntryById(env: Env, id: number): Promise<KeyValueEntry | null> {
-  return await env.DB.prepare("SELECT * FROM key_value_entries WHERE id = ?").bind(id).first<KeyValueEntry>();
+export async function getEntryById(env: Env, id: number): Promise<KeyValueEntryJoined | null> {
+  const query = `
+    SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type
+    FROM key_value_entries k
+    JOIN value_entries v ON k.value_id = v.id
+    WHERE k.id = ?
+  `;
+  return await env.DB.prepare(query).bind(id).first<KeyValueEntryJoined>();
 }
 
-export async function getEntryByKeySecret(env: Env, key: string, secret: string): Promise<KeyValueEntry | null> {
-  // If multiple entries match (same key, same content), return any (e.g., latest created)
-  return await env.DB.prepare("SELECT * FROM key_value_entries WHERE key = ? AND secret = ? ORDER BY created_at DESC")
-    .bind(key, secret)
-    .first<KeyValueEntry>();
+export async function getEntryByKeySecret(env: Env, key: string, secret: string): Promise<KeyValueEntryJoined | null> {
+  // Join and filter by key and value's hash (secret)
+  const query = `
+    SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type
+    FROM key_value_entries k
+    JOIN value_entries v ON k.value_id = v.id
+    WHERE k.key = ? AND v.hash = ?
+    ORDER BY k.created_at DESC
+  `;
+  return await env.DB.prepare(query).bind(key, secret).first<KeyValueEntryJoined>();
 }
 
 export async function updateEntry(
@@ -66,76 +125,102 @@ export async function updateEntry(
   blobValue: ArrayBuffer | null,
   type: string,
   filename?: string
-): Promise<KeyValueEntry | null> {
-    if ((stringValue === null && blobValue === null) || (stringValue !== null && blobValue !== null)) {
-        throw new Error("Either string_value or blob_value must be set, but not both.");
+): Promise<KeyValueEntryJoined | null> {
+    // Note: updateEntry logic in worker.ts passes null/null if preserving content.
+    // If preserving content (stringValue & blobValue both null), we only update key/filename/updated_at.
+
+    if (stringValue === null && blobValue === null) {
+        // Just rename/metadata update
+         const query = `
+            UPDATE key_value_entries
+            SET key = ?, filename = ?, updated_at = datetime('now')
+            WHERE id = ?
+            RETURNING *
+        `;
+        const result = await env.DB.prepare(query)
+            .bind(key, filename || null, id)
+            .first<any>();
+
+        if (!result) return null;
+
+        // Fetch full joined object
+        return await getEntryById(env, id);
     }
 
-  const content = stringValue !== null ? stringValue : blobValue!;
-  const secret = await calculateSecret(content);
+    // Else we are updating value
+    if (stringValue !== null && blobValue !== null) {
+         throw new Error("Either string_value or blob_value must be set, but not both.");
+    }
 
-  const query = `
-    UPDATE key_value_entries
-    SET key = ?, string_value = ?, blob_value = ?, secret = ?, type = ?, filename = ?, updated_at = datetime('now')
-    WHERE id = ?
-    RETURNING *
-  `;
+    const valueEntry = await findOrCreateValue(env, stringValue, blobValue, type);
 
-  return await env.DB.prepare(query)
-    .bind(key, stringValue, blobValue, secret, type, filename || null, id)
-    .first<KeyValueEntry>();
+    const query = `
+        UPDATE key_value_entries
+        SET key = ?, value_id = ?, filename = ?, updated_at = datetime('now')
+        WHERE id = ?
+        RETURNING *
+    `;
+
+    const result = await env.DB.prepare(query)
+        .bind(key, valueEntry.id, filename || null, id)
+        .first<any>();
+
+    if (!result) return null;
+
+    return { ...result, ...valueEntry, secret: valueEntry.hash };
 }
 
 export async function deleteEntry(env: Env, id: number): Promise<void> {
   await env.DB.prepare("DELETE FROM key_value_entries WHERE id = ?").bind(id).run();
 }
 
-/**
- * List entries.
- * - If admin, can see all (or filter by user).
- * - If user, can only see own.
- * - Supports prefix filtering for directory simulation.
- */
 export async function listEntries(
   env: Env,
   user: User,
   prefix?: string,
   search?: string
-): Promise<KeyValueEntry[]> {
-  let query = "SELECT id, key, type, filename, secret, user_id, created_at, updated_at, string_value FROM key_value_entries WHERE 1=1";
+): Promise<KeyValueEntryJoined[]> {
+  // We need to join to get type, string_value, secret
+  let query = `
+    SELECT k.id, k.key, k.filename, k.user_id, k.created_at, k.updated_at,
+           v.hash as secret, v.type, v.string_value
+           -- exclude blob_value for list performance
+    FROM key_value_entries k
+    JOIN value_entries v ON k.value_id = v.id
+    WHERE 1=1
+  `;
+
   const params: any[] = [];
 
-  // Access Control
   if (!user.is_admin) {
-    query += " AND user_id = ?";
+    query += " AND k.user_id = ?";
     params.push(user.id);
   }
 
-  // Filtering
   if (prefix) {
-    query += " AND key LIKE ?";
+    query += " AND k.key LIKE ?";
     params.push(`${prefix}%`);
   }
 
   if (search) {
-    query += " AND key LIKE ?";
+    query += " AND k.key LIKE ?";
     params.push(`%${search}%`);
   }
 
-  query += " ORDER BY key ASC";
+  query += " ORDER BY k.key ASC";
 
-  // Note: We are deliberately NOT selecting blob_value to save bandwidth on listing
-  // But we included string_value. If string values are huge, we might exclude them too.
-  // For now, let's include string_value as it might be useful for preview.
-
-  const { results } = await env.DB.prepare(query).bind(...params).all<KeyValueEntry>();
+  const { results } = await env.DB.prepare(query).bind(...params).all<KeyValueEntryJoined>();
   return results;
 }
 
-export function entryToResponse(entry: KeyValueEntry) {
+export function entryToResponse(entry: KeyValueEntryJoined) {
+    // entry.blob_value might be missing if listing, or present if get
+    const has_blob = !!entry.blob_value || (entry.string_value === null && entry.type !== "application/json" && !entry.type.startsWith("text/"));
+    // Better logic: if string_value is null, it MUST be a blob value_entry.
+
     const { blob_value, ...rest } = entry;
     return {
         ...rest,
-        has_blob: !!blob_value
+        has_blob: entry.string_value === null
     };
 }
