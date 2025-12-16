@@ -2,9 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
     createEntry,
     updateEntry,
-    listEntries
-} from "../src/storage";
-import type { Env, User } from "../src/types";
+    listEntries,
+    getEntryById,
+    deleteEntry,
+    getEntryByKeySecret
+} from "../../src/storage";
+import type { Env, User } from "../../src/types";
 
 // Mock D1 Database
 const mockD1 = {
@@ -163,5 +166,40 @@ describe("Storage Logic", () => {
         expect(env.DB.prepare).toHaveBeenNthCalledWith(1, expect.stringContaining("UPDATE key_value_entries"));
         expect(env.DB.prepare).toHaveBeenNthCalledWith(2, expect.stringContaining("SELECT k.*"));
         expect(result).toEqual(mockJoinedResult);
+    });
+
+    it("should get entry by id", async () => {
+        const mockJoinedResult = { id: 1, key: "test" };
+        const stmt = { bind: vi.fn().mockReturnThis(), first: vi.fn().mockResolvedValue(mockJoinedResult) };
+        (env.DB.prepare as any).mockReturnValue(stmt);
+
+        const result = await getEntryById(env, 1);
+        expect(result).toEqual(mockJoinedResult);
+    });
+
+    it("should delete entry", async () => {
+        const stmt = { bind: vi.fn().mockReturnThis(), run: vi.fn() };
+        (env.DB.prepare as any).mockReturnValue(stmt);
+
+        await deleteEntry(env, 1);
+        expect(stmt.run).toHaveBeenCalled();
+    });
+
+    it("should list entries", async () => {
+        const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [] }) };
+        (env.DB.prepare as any).mockReturnValue(stmt);
+
+        await listEntries(env, mockUser, "prefix", "search");
+        expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining("SELECT k.id"));
+    });
+
+    it("should throw if creating entry with both string and blob", async () => {
+        await expect(createEntry(env, 1, "key", "type", "val", new ArrayBuffer(1)))
+            .rejects.toThrow("Either string_value or blob_value must be set");
+    });
+
+    it("should throw if updating entry with both string and blob", async () => {
+        await expect(updateEntry(env, 1, "key", "val", new ArrayBuffer(1), "type"))
+            .rejects.toThrow("Either string_value or blob_value must be set");
     });
 });

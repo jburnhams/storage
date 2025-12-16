@@ -554,12 +554,22 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
        filename = file.name;
     }
 
+    // Treat empty string as valid content if explicit (FormData sends "" for empty inputs usually)
+    // If null, it means not present.
+    // However, createEntry requires one of them.
+    // If no file and stringValue is null, we can default to empty string if type implies text?
+    // Or just pass what we have. If both null, createEntry throws.
+    // Note: formData.get returns null if missing, or string (possibly empty).
+
+    // If user explicitly sends string_value="" via form (even for empty file), it should be treated as "" not null.
+    // formData.get("string_value") returns "" for empty input.
+
     const entry = await createEntry(
       env,
       user.id,
       key,
       type,
-      stringValue || null,
+      stringValue, // Pass directly (allow "")
       blobValue,
       filename
     );
