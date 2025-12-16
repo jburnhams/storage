@@ -2,6 +2,7 @@ name = "storage"
 main = "src/worker.ts"
 tsconfig = "./tsconfig.json"
 compatibility_date = "2025-02-14"
+keep_vars = true
 
 [build]
 command = "npm run generate:frontend"
