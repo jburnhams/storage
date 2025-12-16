@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { BuildTimestampBadge } from "../src/components/BuildTimestampBadge";
+import { BuildTimestampBadge } from "../../src/components/BuildTimestampBadge";
 
 describe("BuildTimestampBadge", () => {
   it("shows default text when timestamp is not provided", () => {

@@ -4,7 +4,7 @@ const SESSION_DURATION_DAYS = 7;
 const SESSION_DURATION_MS = SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000;
 
 // Master list of admin emails
-const MASTER_ADMIN_EMAILS = [
+export const MASTER_ADMIN_EMAILS = [
   // Add your admin emails here when you have them
   // Example: "admin@jonathanburnhams.com"
 ];
