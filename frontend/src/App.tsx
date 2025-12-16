@@ -1,17 +1,26 @@
 import { useState, useEffect } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { LoginPage } from "./components/LoginPage";
 import { UserDashboard } from "./components/UserDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { BuildTimestampBadge } from "./components/BuildTimestampBadge";
+import { StorageExplorer } from "./components/StorageExplorer";
+import { PublicShareView } from "./components/PublicShareView";
 import type { UserResponse } from "./types";
 
 export function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>("");
+  const location = useLocation();
 
   useEffect(() => {
-    // Check if user is authenticated
+    // If we are on a public share link, skip auth check to load faster.
+    // If the user happens to be logged in, the share view doesn't strictly need that info right now.
+    if (location.pathname.startsWith("/share/")) {
+        setLoading(false);
+        return;
+    }
+
     fetch("/api/user")
       .then((res) => {
         if (res.ok) {
@@ -29,7 +38,7 @@ export function App() {
         console.error("Failed to fetch user:", err);
         setLoading(false);
       });
-  }, []);
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -49,6 +58,15 @@ export function App() {
     );
   }
 
+  // Public Routes can be accessed without user
+  if (location.pathname.startsWith("/share/")) {
+      return (
+          <Routes>
+              <Route path="/share/*" element={<PublicShareView />} />
+          </Routes>
+      )
+  }
+
   if (!user) {
     return <LoginPage />;
   }
@@ -56,16 +74,29 @@ export function App() {
   return (
     <main className="page">
       <header>
-        <h1>Storage Auth Service</h1>
-        <p>Centralized authentication for jonathanburnhams.com subdomains</p>
-        <button onClick={handleLogout} className="logout-btn">
-          Logout
-        </button>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+            <div>
+                <h1>Storage Auth Service</h1>
+                <p>Centralized authentication for jonathanburnhams.com subdomains</p>
+            </div>
+            <button onClick={handleLogout} className="logout-btn">
+            Logout
+            </button>
+        </div>
       </header>
 
-      <UserDashboard user={user} />
+      {/* Navigation or Tabs? */}
 
-      {user.is_admin && <AdminDashboard />}
+      <Routes>
+        <Route path="/" element={
+            <>
+                <UserDashboard user={user} />
+                {user.is_admin && <AdminDashboard />}
+                <hr />
+                <StorageExplorer user={user} />
+            </>
+        } />
+      </Routes>
 
       <footer className="build-info">
         <BuildTimestampBadge timestamp="__BUILD_TIMESTAMP__" />
