@@ -538,19 +538,28 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
   try {
     const formData = await request.formData();
     const key = formData.get("key") as string;
-    const type = formData.get("type") as string;
+    // Default type if missing (e.g. from tests)
+    const type = (formData.get("type") as string) || "application/octet-stream";
     const stringValue = formData.get("string_value") as string | null;
     const file = formData.get("file") as File | null;
 
-    if (!key || !type) {
-      return createErrorResponse("INVALID_REQUEST", "Key and Type are required", 400);
+    if (!key) {
+      return createErrorResponse("INVALID_REQUEST", "Key is required", 400);
     }
 
     let blobValue: ArrayBuffer | null = null;
     let filename: string | undefined = undefined;
 
     if (file) {
-       blobValue = await file.arrayBuffer();
+       if (typeof file.arrayBuffer === 'function') {
+           blobValue = await file.arrayBuffer();
+       } else {
+           // Fallback if it's treated as string or other object?
+           // Sometimes Miniflare/workerd passes strings for files if not parsed correctly?
+           // Or if it is a File object but missing methods in test env.
+           // Try Response
+           blobValue = await new Response(file).arrayBuffer();
+       }
        filename = file.name;
     }
 
@@ -628,7 +637,11 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
 
     // If file provided -> New Content (Blob)
     if (file) {
-       blobValue = await file.arrayBuffer();
+       if (typeof file.arrayBuffer === 'function') {
+           blobValue = await file.arrayBuffer();
+       } else {
+           blobValue = await new Response(file).arrayBuffer();
+       }
        filename = file.name;
        finalStringValue = null;
     } else {

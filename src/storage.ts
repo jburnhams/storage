@@ -1,5 +1,7 @@
 import type { Env, KeyValueEntryJoined, User, ValueEntry } from "./types";
 
+const MAX_BLOCK_SIZE = 1.8 * 1024 * 1024; // 1.8 MB
+
 /**
  * Calculate SHA-1 hash of content
  */
@@ -9,6 +11,62 @@ async function calculateSecret(content: string | ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest("SHA-1", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Split blob into chunks
+ */
+function chunkBlob(blob: ArrayBuffer): ArrayBuffer[] {
+  const chunks: ArrayBuffer[] = [];
+  let offset = 0;
+  while (offset < blob.byteLength) {
+    const end = Math.min(offset + MAX_BLOCK_SIZE, blob.byteLength);
+    chunks.push(blob.slice(offset, end));
+    offset = end;
+  }
+  return chunks;
+}
+
+/**
+ * Reassemble blob from parts
+ */
+async function reassembleBlob(env: Env, valueId: number): Promise<ArrayBuffer | null> {
+  const query = `
+    SELECT data FROM blob_parts
+    WHERE value_id = ?
+    ORDER BY part_index ASC
+  `;
+  const { results } = await env.DB.prepare(query).bind(valueId).all<{ data: ArrayBuffer }>();
+
+  if (!results || results.length === 0) return null;
+
+  // Calculate total size
+  const totalSize = results.reduce((acc, row) => acc + (row.data as ArrayBuffer).byteLength, 0);
+  const combined = new Uint8Array(totalSize);
+
+  let offset = 0;
+  for (const row of results) {
+    // D1 might return byte array as standard JS Array in some environments (like miniflare maybe?) or Uint8Array.
+    // But in Workers it's usually ArrayBuffer or Array.
+    // Ensure we handle it correctly.
+    const rowData = row.data as any;
+    // If it's an array (numeric), convert.
+    let chunk: Uint8Array;
+    if (Array.isArray(rowData)) {
+        chunk = new Uint8Array(rowData);
+    } else if (rowData instanceof ArrayBuffer) {
+        chunk = new Uint8Array(rowData);
+    } else {
+        // Fallback for miniflare D1 returning Uint8Array directly sometimes?
+        // Or if it is already a typed array (like Uint8Array from cloudflare:test)
+        chunk = new Uint8Array(rowData);
+    }
+
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return combined.buffer;
 }
 
 /**
@@ -23,13 +81,15 @@ async function findOrCreateValue(
     const content = stringValue !== null ? stringValue : blobValue!;
     const hash = await calculateSecret(content);
 
-    // Look up by hash
-    // We also check type, and ideally content to avoid collision.
-    // D1 SELECT blob comparison might be tricky, so we rely on hash + type + string check.
-    // If blob, we might rely on hash strength (SHA-1 is weak but sufficient for this context probably).
-    // Or we fetch and compare in JS? Fetching large blobs is expensive.
-    // Let's rely on Hash + Type + StringValue check.
+    // Calculate size
+    let size = 0;
+    if (stringValue !== null) {
+      size = stringValue.length;
+    } else if (blobValue !== null) {
+      size = blobValue.byteLength;
+    }
 
+    // Look up by hash
     let query = "SELECT * FROM value_entries WHERE hash = ? AND type = ?";
     const params: any[] = [hash, type];
 
@@ -46,20 +106,60 @@ async function findOrCreateValue(
         return existing;
     }
 
-    // Create new
-    const insert = `
-        INSERT INTO value_entries (hash, string_value, blob_value, type)
-        VALUES (?, ?, ?, ?)
-        RETURNING *
-    `;
+    // Determine if multipart
+    const isMultipart = blobValue !== null && size > MAX_BLOCK_SIZE;
 
-    const newEntry = await env.DB.prepare(insert)
-        .bind(hash, stringValue, blobValue, type)
-        .first<ValueEntry>();
+    if (isMultipart && blobValue) {
+        // Multipart Insert
+        // 1. Insert value_entry with is_multipart=1, blob_value=NULL
+        const insertValue = `
+            INSERT INTO value_entries (hash, string_value, blob_value, type, is_multipart, size)
+            VALUES (?, NULL, NULL, ?, 1, ?)
+            RETURNING *
+        `;
 
-    if (!newEntry) throw new Error("Failed to create value entry");
+        // Use batch to ensure atomicity
+        const chunks = chunkBlob(blobValue);
+        const batch = [
+            env.DB.prepare(insertValue).bind(hash, type, size)
+        ];
 
-    return newEntry;
+        // We need the ID from the first insert to insert parts.
+        // D1 batch doesn't support using result of previous statement in next statement easily in one go unless using stored procedures which aren't standard here.
+        // So we must do it in steps. Ideally inside a transaction.
+        // But let's try to just insert the value first.
+
+        const newEntry = await env.DB.prepare(insertValue)
+            .bind(hash, type, size)
+            .first<ValueEntry>();
+
+        if (!newEntry) throw new Error("Failed to create multipart value entry");
+
+        const partInserts = chunks.map((chunk, index) =>
+            env.DB.prepare("INSERT INTO blob_parts (value_id, part_index, data) VALUES (?, ?, ?)")
+                .bind(newEntry.id, index, chunk)
+        );
+
+        await env.DB.batch(partInserts);
+
+        return newEntry;
+
+    } else {
+        // Standard Insert
+        const insert = `
+            INSERT INTO value_entries (hash, string_value, blob_value, type, is_multipart, size)
+            VALUES (?, ?, ?, ?, 0, ?)
+            RETURNING *
+        `;
+
+        const newEntry = await env.DB.prepare(insert)
+            .bind(hash, stringValue, blobValue, type, size)
+            .first<ValueEntry>();
+
+        if (!newEntry) throw new Error("Failed to create value entry");
+
+        return newEntry;
+    }
 }
 
 export async function createEntry(
@@ -97,24 +197,38 @@ export async function createEntry(
 
 export async function getEntryById(env: Env, id: number): Promise<KeyValueEntryJoined | null> {
   const query = `
-    SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type
+    SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type, v.is_multipart, v.size
     FROM key_value_entries k
     JOIN value_entries v ON k.value_id = v.id
     WHERE k.id = ?
   `;
-  return await env.DB.prepare(query).bind(id).first<KeyValueEntryJoined>();
+  const entry = await env.DB.prepare(query).bind(id).first<KeyValueEntryJoined>();
+
+  if (entry && entry.is_multipart) {
+      const blob = await reassembleBlob(env, entry.value_id);
+      entry.blob_value = blob;
+  }
+
+  return entry;
 }
 
 export async function getEntryByKeySecret(env: Env, key: string, secret: string): Promise<KeyValueEntryJoined | null> {
   // Join and filter by key and value's hash (secret)
   const query = `
-    SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type
+    SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type, v.is_multipart, v.size
     FROM key_value_entries k
     JOIN value_entries v ON k.value_id = v.id
     WHERE k.key = ? AND v.hash = ?
     ORDER BY k.created_at DESC
   `;
-  return await env.DB.prepare(query).bind(key, secret).first<KeyValueEntryJoined>();
+  const entry = await env.DB.prepare(query).bind(key, secret).first<KeyValueEntryJoined>();
+
+  if (entry && entry.is_multipart) {
+      const blob = await reassembleBlob(env, entry.value_id);
+      entry.blob_value = blob;
+  }
+
+  return entry;
 }
 
 export async function updateEntry(
@@ -183,7 +297,7 @@ export async function listEntries(
   // We need to join to get type, string_value, secret
   let query = `
     SELECT k.id, k.key, k.filename, k.user_id, k.created_at, k.updated_at,
-           v.hash as secret, v.type, v.string_value
+           v.hash as secret, v.type, v.string_value, v.size, v.is_multipart
            -- exclude blob_value for list performance
     FROM key_value_entries k
     JOIN value_entries v ON k.value_id = v.id

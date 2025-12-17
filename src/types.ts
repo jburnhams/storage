@@ -25,6 +25,8 @@ export interface ValueEntry {
     string_value: string | null;
     blob_value: unknown | null;
     type: string;
+    is_multipart: number;
+    size: number;
     created_at: string;
 }
 
@@ -44,6 +46,8 @@ export interface KeyValueEntryJoined extends KeyValueEntry {
     string_value: string | null;
     blob_value: unknown | null;
     type: string;
+    is_multipart: number;
+    size: number;
 }
 
 // ===== API Response Types =====
