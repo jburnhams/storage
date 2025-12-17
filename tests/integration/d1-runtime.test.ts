@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { Miniflare } from "miniflare";
 import {
   createMiniflareInstance,
-  runMigrations,
   seedTestData,
   cleanDatabase,
 } from "./setup";
@@ -10,11 +9,13 @@ import {
 describe("D1 Runtime Operations", () => {
   let mf: Miniflare;
   let db: D1Database;
+  let persistPath: string;
 
   beforeAll(async () => {
-    mf = await createMiniflareInstance({});
+    const result = await createMiniflareInstance({});
+    mf = result.mf;
+    persistPath = result.persistPath;
     db = await mf.getD1Database("DB");
-    await runMigrations(db);
   });
 
   beforeEach(async () => {
@@ -23,6 +24,13 @@ describe("D1 Runtime Operations", () => {
 
   afterAll(async () => {
     await mf.dispose();
+    // Cleanup persistence directory
+    try {
+      const { rmSync } = await import("fs");
+      rmSync(persistPath, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Failed to clean up D1 persistence:", e);
+    }
   });
 
   describe("User CRUD Operations", () => {
