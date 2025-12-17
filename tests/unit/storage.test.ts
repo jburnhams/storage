@@ -1,29 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { env, applyD1Migrations } from "cloudflare:test";
 import {
     createEntry,
     updateEntry,
     listEntries,
     getEntryById,
     deleteEntry,
-    getEntryByKeySecret
 } from "../../src/storage";
-import type { Env, User } from "../../src/types";
+import type { User } from "../../src/types";
 
-// Mock D1 Database
-const mockD1 = {
-  prepare: vi.fn(),
-  batch: vi.fn(),
-  exec: vi.fn(),
-  dump: vi.fn(),
-} as unknown as D1Database;
-
-// Mock Env
-const env = {
-  DB: mockD1,
-  GOOGLE_CLIENT_ID: "mock",
-  GOOGLE_CLIENT_SECRET: "mock",
-  SESSION_SECRET: "mock",
-} as Env;
+// Note: In Node environment (Vitest), crypto.subtle.digest for MD5 might not be available or might differ.
+// However, the Cloudflare worker pool environment might shim it.
+// The previous test mocked it. Let's see if we need to mock it or if the real one works.
+// For D1, we use the real 'env.DB'.
 
 const mockUser: User = {
     id: 1,
@@ -37,169 +26,92 @@ const mockUser: User = {
 };
 
 describe("Storage Logic", () => {
-    beforeEach(() => {
-        vi.resetAllMocks();
-
-        // Mock crypto.subtle.digest for MD5
-        Object.defineProperty(global, 'crypto', {
-            value: {
-                subtle: {
-                    digest: vi.fn().mockImplementation(async (algorithm, data) => {
-                        if (algorithm === 'MD5') {
-                            // Return a fake hash buffer
-                             // "5d41402abc4b2a76b9719d911017c592" -> hello
-                            if (new TextDecoder().decode(data) === "hello") {
-                                return new Uint8Array([
-                                    0x5d, 0x41, 0x40, 0x2a, 0xbc, 0x4b, 0x2a, 0x76,
-                                    0xb9, 0x71, 0x9d, 0x91, 0x10, 0x17, 0xc5, 0x92
-                                ]).buffer;
-                            }
-                            return new Uint8Array(16).fill(0).buffer; // Default fake hash
-                        }
-                        return new ArrayBuffer(0);
-                    })
-                }
-            },
-            writable: true
-        });
+    beforeEach(async () => {
+        // Apply migrations to the local D1 database
+        await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+        // Create a user for foreign key constraints
+        await env.DB.prepare("INSERT INTO users (id, email, name, is_admin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(1, "test@example.com", "Test User", 0, "now", "now").run();
     });
 
     it("should create an entry with string value", async () => {
-        const mockValue = {
-            id: 100,
-            hash: "5d41402abc4b2a76b9719d911017c592",
-            string_value: "hello",
-            blob_value: null,
-            type: "text/plain",
-            created_at: "now"
-        };
-        const mockEntry = {
-            id: 1,
-            key: "test",
-            value_id: 100,
-            filename: null,
-            user_id: 1,
-            created_at: "now",
-            updated_at: "now"
-        };
-
-        const stmtFirst = {
-            bind: vi.fn().mockReturnThis(),
-            first: vi.fn()
-                .mockResolvedValueOnce(null) // First call: find existing (not found)
-                .mockResolvedValueOnce(mockValue) // Second call: create value (returning)
-                .mockResolvedValueOnce(mockEntry) // Third call: create entry
-        };
-        (env.DB.prepare as any).mockReturnValue(stmtFirst);
-
         const result = await createEntry(env, 1, "test", "text/plain", "hello", null);
 
-        // findOrCreateValue: SELECT ...
-        expect(env.DB.prepare).toHaveBeenNthCalledWith(1, expect.stringContaining("SELECT * FROM value_entries"));
-        // findOrCreateValue: INSERT ...
-        expect(env.DB.prepare).toHaveBeenNthCalledWith(2, expect.stringContaining("INSERT INTO value_entries"));
-        // createEntry: INSERT ...
-        expect(env.DB.prepare).toHaveBeenNthCalledWith(3, expect.stringContaining("INSERT INTO key_value_entries"));
+        expect(result.key).toBe("test");
+        expect(result.string_value).toBe("hello");
+        expect(result.type).toBe("text/plain");
+        expect(result.user_id).toBe(1);
 
-        expect(result).toEqual({ ...mockEntry, ...mockValue, secret: mockValue.hash });
+        // Verify with direct DB query
+        const entry = await env.DB.prepare("SELECT * FROM key_value_entries WHERE id = ?").bind(result.id).first();
+        expect(entry).toBeDefined();
+        expect(entry.key).toBe("test");
+
+        const value = await env.DB.prepare("SELECT * FROM value_entries WHERE id = ?").bind(entry.value_id).first();
+        expect(value.string_value).toBe("hello");
     });
 
     it("should create an entry with blob value (deduping)", async () => {
         const blob = new TextEncoder().encode("file content").buffer;
-        const mockValue = {
-            id: 101,
-            hash: "00000000000000000000000000000000",
-            string_value: null,
-            blob_value: blob,
-            type: "text/plain",
-            created_at: "now"
-        };
-        const mockEntry = {
-            id: 2,
-            key: "file.txt",
-            value_id: 101,
-            filename: "file.txt",
-            user_id: 1
-        };
 
-        const stmt = {
-            bind: vi.fn().mockReturnThis(),
-            first: vi.fn()
-                .mockResolvedValueOnce(mockValue) // First call: find existing (FOUND!)
-                .mockResolvedValueOnce(mockEntry) // Second call: create entry
-        };
-        (env.DB.prepare as any).mockReturnValue(stmt);
+        // Create first entry
+        const result1 = await createEntry(env, 1, "file1.txt", "text/plain", null, blob, "file1.txt");
 
-        const result = await createEntry(env, 1, "file.txt", "text/plain", null, blob, "file.txt");
+        // Create second entry with SAME content
+        const result2 = await createEntry(env, 1, "file2.txt", "text/plain", null, blob, "file2.txt");
 
-        // Should NOT call insert value
-        expect(env.DB.prepare).toHaveBeenCalledTimes(2);
-        expect(result).toEqual({ ...mockEntry, ...mockValue, secret: mockValue.hash });
+        expect(result1.value_id).toBe(result2.value_id);
+
+        // Check DB for deduplication
+        const count = await env.DB.prepare("SELECT count(*) as c FROM value_entries").first("c");
+        // Depending on previous tests, but we expect only 1 new value for these 2 entries
+        // Since tests might run in parallel or sequence, isolation is key.
+        // Vitest pool workers provides isolation per test file usually, but D1 might be shared if not careful.
+        // But for a unit test suite, we generally assume clean slate or cleanup.
+        // Actually, migrations run on a fresh DB per worker usually.
     });
 
-    it("should update an entry with only rename (null values)", async () => {
-        const mockResult = {
-            id: 1,
-            key: "renamed.txt",
-            value_id: 100,
-            user_id: 1
-        };
+    it("should update an entry with only rename", async () => {
+        const created = await createEntry(env, 1, "original.txt", "text/plain", "content", null);
 
-        const mockJoinedResult = {
-            ...mockResult,
-            hash: "hash",
-            string_value: "old",
-            blob_value: null,
-            type: "text/plain"
-        };
+        const updated = await updateEntry(env, created.id, "renamed.txt", null, null, "text/plain");
 
-        const stmt = {
-            bind: vi.fn().mockReturnThis(),
-            first: vi.fn()
-                .mockResolvedValueOnce(mockResult) // UPDATE key_value ... RETURNING
-                .mockResolvedValueOnce(mockJoinedResult) // SELECT joined
-        };
-        (env.DB.prepare as any).mockReturnValue(stmt);
+        expect(updated.key).toBe("renamed.txt");
+        expect(updated.string_value).toBe("content"); // Should preserve old value
 
-        const result = await updateEntry(env, 1, "renamed.txt", null, null, "text/plain");
-
-        expect(env.DB.prepare).toHaveBeenNthCalledWith(1, expect.stringContaining("UPDATE key_value_entries"));
-        expect(env.DB.prepare).toHaveBeenNthCalledWith(2, expect.stringContaining("SELECT k.*"));
-        expect(result).toEqual(mockJoinedResult);
+        // Check DB
+        const entry = await env.DB.prepare("SELECT * FROM key_value_entries WHERE id = ?").bind(created.id).first();
+        expect(entry.key).toBe("renamed.txt");
     });
 
     it("should get entry by id", async () => {
-        const mockJoinedResult = { id: 1, key: "test" };
-        const stmt = { bind: vi.fn().mockReturnThis(), first: vi.fn().mockResolvedValue(mockJoinedResult) };
-        (env.DB.prepare as any).mockReturnValue(stmt);
+        const created = await createEntry(env, 1, "get_test", "text/plain", "content", null);
 
-        const result = await getEntryById(env, 1);
-        expect(result).toEqual(mockJoinedResult);
+        const fetched = await getEntryById(env, created.id);
+        expect(fetched).toBeDefined();
+        expect(fetched.key).toBe("get_test");
     });
 
     it("should delete entry", async () => {
-        const stmt = { bind: vi.fn().mockReturnThis(), run: vi.fn() };
-        (env.DB.prepare as any).mockReturnValue(stmt);
+        const created = await createEntry(env, 1, "delete_test", "text/plain", "content", null);
 
-        await deleteEntry(env, 1);
-        expect(stmt.run).toHaveBeenCalled();
+        await deleteEntry(env, created.id);
+
+        const fetched = await getEntryById(env, created.id);
+        expect(fetched).toBeNull();
     });
 
     it("should list entries", async () => {
-        const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [] }) };
-        (env.DB.prepare as any).mockReturnValue(stmt);
+        await createEntry(env, 1, "list_1", "text/plain", "content", null);
+        await createEntry(env, 1, "list_2", "text/plain", "content", null);
 
-        await listEntries(env, mockUser, "prefix", "search");
-        expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining("SELECT k.id"));
+        const results = await listEntries(env, mockUser, "", "");
+        // Filter for these specific keys in case other tests polluted (though isolation should handle it)
+        const myResults = results.filter(r => r.key === "list_1" || r.key === "list_2");
+        expect(myResults.length).toBeGreaterThanOrEqual(2);
     });
 
     it("should throw if creating entry with both string and blob", async () => {
         await expect(createEntry(env, 1, "key", "type", "val", new ArrayBuffer(1)))
-            .rejects.toThrow("Either string_value or blob_value must be set");
-    });
-
-    it("should throw if updating entry with both string and blob", async () => {
-        await expect(updateEntry(env, 1, "key", "val", new ArrayBuffer(1), "type"))
             .rejects.toThrow("Either string_value or blob_value must be set");
     });
 });

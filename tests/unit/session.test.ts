@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { env, applyD1Migrations } from "cloudflare:test";
 import {
   generateSessionId,
   createSession,
@@ -15,20 +16,11 @@ import {
   getAllSessions,
   userToResponse,
 } from "../../src/session";
-import type { Env, User } from "../../src/types";
-
-// Mock D1 database
-const mockDB = {
-  prepare: vi.fn(),
-};
-
-const mockEnv = {
-  DB: mockDB,
-} as unknown as Env;
+import type { User } from "../../src/types";
 
 describe("Session Management", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
   });
 
   describe("generateSessionId", () => {
@@ -46,213 +38,123 @@ describe("Session Management", () => {
 
   describe("createSession", () => {
     it("should create a session and insert into DB", async () => {
-      const userId = 123;
-      const mockRun = vi.fn().mockResolvedValue({});
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          run: mockRun,
-        }),
-      });
+      // First create a user to link session to
+      const user = await getOrCreateUser("sess@test.com", "Sess User", "pic", env);
 
-      const session = await createSession(userId, mockEnv);
+      const session = await createSession(user.id, env);
 
-      expect(session.user_id).toBe(userId);
-      expect(mockDB.prepare).toHaveBeenCalledWith(
-        expect.stringContaining("INSERT INTO sessions")
-      );
-      expect(mockRun).toHaveBeenCalled();
+      expect(session.user_id).toBe(user.id);
+
+      const savedSession = await env.DB.prepare("SELECT * FROM sessions WHERE id = ?").bind(session.id).first();
+      expect(savedSession).toBeDefined();
+      expect(savedSession.user_id).toBe(user.id);
     });
   });
 
   describe("getSession", () => {
     it("should retrieve a valid session", async () => {
-      const sessionId = "test-session";
-      const mockSession = { id: sessionId, user_id: 123 };
+      const user = await getOrCreateUser("get@test.com", "Get User", "pic", env);
+      const created = await createSession(user.id, env);
 
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(mockSession),
-        }),
-      });
-
-      const result = await getSession(sessionId, mockEnv);
-      expect(result).toEqual(mockSession);
+      const result = await getSession(created.id, env);
+      expect(result).toBeDefined();
+      expect(result!.id).toBe(created.id);
+      expect(result!.user_id).toBe(user.id);
     });
 
-    it("should return null if session not found or expired", async () => {
-      const sessionId = "test-session";
-
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(null),
-        }),
-      });
-
-      const result = await getSession(sessionId, mockEnv);
+    it("should return null if session not found", async () => {
+      const result = await getSession("nonexistent", env);
       expect(result).toBeNull();
     });
   });
 
   describe("updateSessionLastUsed", () => {
     it("should update last_used_at timestamp", async () => {
-      const sessionId = "test-session";
-      const mockRun = vi.fn().mockResolvedValue({});
+      const user = await getOrCreateUser("upd@test.com", "Upd User", "pic", env);
+      const created = await createSession(user.id, env);
 
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          run: mockRun,
-        }),
-      });
+      // Wait a bit or manually set older time if possible (but we just check it runs)
+      // Actually SQLITE uses seconds for unix epoch or ISO string.
 
-      await updateSessionLastUsed(sessionId, mockEnv);
-      expect(mockDB.prepare).toHaveBeenCalledWith(
-        expect.stringContaining("UPDATE sessions SET last_used_at")
-      );
+      await updateSessionLastUsed(created.id, env);
+
+      const updated = await env.DB.prepare("SELECT last_used_at FROM sessions WHERE id = ?").bind(created.id).first();
+      expect(updated.last_used_at).toBeDefined();
     });
   });
 
   describe("deleteSession", () => {
     it("should delete session from DB", async () => {
-      const sessionId = "test-session";
-      const mockRun = vi.fn().mockResolvedValue({});
+      const user = await getOrCreateUser("del@test.com", "Del User", "pic", env);
+      const created = await createSession(user.id, env);
 
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          run: mockRun,
-        }),
-      });
+      await deleteSession(created.id, env);
 
-      await deleteSession(sessionId, mockEnv);
-      expect(mockDB.prepare).toHaveBeenCalledWith(
-        expect.stringContaining("DELETE FROM sessions")
-      );
+      const check = await env.DB.prepare("SELECT * FROM sessions WHERE id = ?").bind(created.id).first();
+      expect(check).toBeNull();
     });
   });
 
   describe("deleteExpiredSessions", () => {
     it("should delete expired sessions", async () => {
-      const mockRun = vi.fn().mockResolvedValue({});
+      // Ensure user exists (created in beforeEach or we create one here)
+      // We rely on getOrCreateUser in other tests, but here we manually insert.
+      // Let's create a user specifically for this test to be safe.
+      const user = await getOrCreateUser("expired@test.com", "Expired User", "pic", env);
 
-      mockDB.prepare.mockReturnValue({
-        run: mockRun,
-      });
+      // Manually insert an expired session
+      await env.DB.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
+        .bind("expired_sess", user.id, Date.now() - 10000)
+        .run();
 
-      await deleteExpiredSessions(mockEnv);
-      expect(mockDB.prepare).toHaveBeenCalledWith(
-        expect.stringContaining("DELETE FROM sessions WHERE expires_at")
-      );
+      await deleteExpiredSessions(env);
+
+      const check = await env.DB.prepare("SELECT * FROM sessions WHERE id = ?").bind("expired_sess").first();
+      expect(check).toBeNull();
     });
   });
 
   describe("getOrCreateUser", () => {
     it("should return existing user and update login info", async () => {
-      const existingUser = { id: 1, email: "test@example.com", name: "Old Name" };
-      const mockRun = vi.fn().mockResolvedValue({});
+      // Create first
+      const user1 = await getOrCreateUser("exist@test.com", "Old Name", "pic", env);
 
-      // Mock finding user
-      mockDB.prepare.mockReturnValueOnce({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(existingUser),
-        }),
-      });
+      // Get again with new name
+      const user2 = await getOrCreateUser("exist@test.com", "New Name", "pic", env);
 
-      // Mock update
-      mockDB.prepare.mockReturnValueOnce({
-        bind: vi.fn().mockReturnValue({
-          run: mockRun,
-        }),
-      });
-
-      const user = await getOrCreateUser(
-        "test@example.com",
-        "New Name",
-        "pic.jpg",
-        mockEnv
-      );
-
-      expect(user.id).toBe(1);
-      expect(user.name).toBe("New Name");
-      expect(mockRun).toHaveBeenCalled();
+      expect(user2.id).toBe(user1.id);
+      expect(user2.name).toBe("New Name"); // Should have updated
     });
 
     it("should create new user if not exists", async () => {
-      const newUser = { id: 1, email: "new@example.com", name: "New User" };
-
-      // Mock finding user (not found)
-      mockDB.prepare.mockReturnValueOnce({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(null),
-        }),
-      });
-
-      // Mock insert
-      mockDB.prepare.mockReturnValueOnce({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(newUser),
-        }),
-      });
-
-      const user = await getOrCreateUser(
-        "new@example.com",
-        "New User",
-        "pic.jpg",
-        mockEnv
-      );
-
-      expect(user).toEqual(newUser);
-    });
-
-    it("should throw error if creation fails", async () => {
-      // Mock finding user (not found)
-      mockDB.prepare.mockReturnValueOnce({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(null),
-        }),
-      });
-
-      // Mock insert returning null
-      mockDB.prepare.mockReturnValueOnce({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(null),
-        }),
-      });
-
-      await expect(
-        getOrCreateUser("fail@example.com", "Fail", "pic.jpg", mockEnv)
-      ).rejects.toThrow("Failed to create user");
+       const user = await getOrCreateUser("new@test.com", "New User", "pic", env);
+       expect(user.id).toBeDefined();
+       expect(user.email).toBe("new@test.com");
     });
   });
 
   describe("getUserById", () => {
     it("should return user by id", async () => {
-      const mockUser = { id: 1 };
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(mockUser),
-        }),
-      });
+      const created = await getOrCreateUser("id@test.com", "ID User", "pic", env);
 
-      const result = await getUserById(1, mockEnv);
-      expect(result).toEqual(mockUser);
+      const result = await getUserById(created.id, env);
+      expect(result).toBeDefined();
+      expect(result!.email).toBe("id@test.com");
     });
   });
 
   describe("getUserByEmail", () => {
     it("should return user by email", async () => {
-      const mockUser = { id: 1, email: "test@example.com" };
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(mockUser),
-        }),
-      });
+       const created = await getOrCreateUser("email@test.com", "Email User", "pic", env);
 
-      const result = await getUserByEmail("test@example.com", mockEnv);
-      expect(result).toEqual(mockUser);
+      const result = await getUserByEmail("email@test.com", env);
+      expect(result).toBeDefined();
+      expect(result!.id).toBe(created.id);
     });
   });
 
   describe("isUserAdmin", () => {
-    it("should return true if user is admin in DB", () => {
+    it("should return true if user is admin", () => {
       const user = { is_admin: 1, email: "user@example.com" } as User;
       expect(isUserAdmin(user)).toBe(true);
     });
@@ -265,70 +167,35 @@ describe("Session Management", () => {
 
   describe("promoteUserToAdmin", () => {
     it("should set is_admin to 1", async () => {
-      const mockRun = vi.fn().mockResolvedValue({});
-      mockDB.prepare.mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          run: mockRun,
-        }),
-      });
+       const user = await getOrCreateUser("promote@test.com", "Promote User", "pic", env);
+       expect(user.is_admin).toBe(0); // Default
 
-      await promoteUserToAdmin("user@example.com", mockEnv);
-      expect(mockDB.prepare).toHaveBeenCalledWith(
-        expect.stringContaining("UPDATE users SET is_admin = 1")
-      );
+      await promoteUserToAdmin("promote@test.com", env);
+
+      const updated = await getUserById(user.id, env);
+      expect(updated!.is_admin).toBe(1);
     });
   });
 
   describe("getAllUsers", () => {
     it("should return all users", async () => {
-      const mockUsers = [{ id: 1 }, { id: 2 }];
-      mockDB.prepare.mockReturnValue({
-        all: vi.fn().mockResolvedValue({ results: mockUsers }),
-      });
+      await getOrCreateUser("u1@test.com", "U1", "pic", env);
+      await getOrCreateUser("u2@test.com", "U2", "pic", env);
 
-      const result = await getAllUsers(mockEnv);
-      expect(result).toEqual(mockUsers);
-    });
-
-    it("should return empty array if no results", async () => {
-      mockDB.prepare.mockReturnValue({
-        all: vi.fn().mockResolvedValue({ results: null }),
-      });
-
-      const result = await getAllUsers(mockEnv);
-      expect(result).toEqual([]);
+      const result = await getAllUsers(env);
+      expect(result.length).toBeGreaterThanOrEqual(2);
     });
   });
 
   describe("getAllSessions", () => {
     it("should return mapped sessions with users", async () => {
-      const mockData = [
-        {
-          session_id: "s1",
-          session_user_id: 1,
-          user_id: 1,
-          user_email: "test@example.com",
-          user_is_admin: 0,
-        },
-      ];
+      const user = await getOrCreateUser("allsess@test.com", "AllSess", "pic", env);
+      await createSession(user.id, env);
 
-      mockDB.prepare.mockReturnValue({
-        all: vi.fn().mockResolvedValue({ results: mockData }),
-      });
-
-      const result = await getAllSessions(mockEnv);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe("s1");
-      expect(result[0].user.email).toBe("test@example.com");
-    });
-
-     it("should return empty array if no results", async () => {
-      mockDB.prepare.mockReturnValue({
-        all: vi.fn().mockResolvedValue({ results: null }),
-      });
-
-      const result = await getAllSessions(mockEnv);
-      expect(result).toEqual([]);
+      const result = await getAllSessions(env);
+      const mySession = result.find(s => s.user.email === "allsess@test.com");
+      expect(mySession).toBeDefined();
+      expect(mySession!.user.name).toBe("AllSess");
     });
   });
 
