@@ -4,15 +4,29 @@ import { createMiniflareInstance } from "./setup";
 
 describe("Secrets and Environment Bindings", () => {
   let mf: Miniflare;
+  let persistPaths: string[] = [];
 
   afterEach(async () => {
     if (mf) {
       await mf.dispose();
     }
+    // Cleanup any paths created during tests
+    for (const path of persistPaths) {
+      try {
+        const { rmSync } = await import("fs");
+        rmSync(path, { recursive: true, force: true });
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+    persistPaths = [];
   });
 
   it("should provide access to D1 database binding", async () => {
-    mf = await createMiniflareInstance({});
+    const result = await createMiniflareInstance({});
+    mf = result.mf;
+    persistPaths.push(result.persistPath);
+
     const db = await mf.getD1Database("DB");
 
     expect(db).toBeDefined();
@@ -26,8 +40,6 @@ describe("Secrets and Environment Bindings", () => {
       GOOGLE_CLIENT_SECRET: "custom-secret-abc",
       SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     };
-
-    mf = await createMiniflareInstance({ secrets: testSecrets });
 
     // Create a test worker to access bindings
     const testScript = `
@@ -46,12 +58,12 @@ describe("Secrets and Environment Bindings", () => {
       };
     `;
 
-    await mf.setOptions({
-      modules: true,
-      script: testScript,
-      d1Databases: { DB: ":memory:" },
-      bindings: testSecrets,
+    const result = await createMiniflareInstance({
+      secrets: testSecrets,
+      script: testScript
     });
+    mf = result.mf;
+    persistPaths.push(result.persistPath);
 
     const response = await mf.dispatchFetch("http://localhost/");
     const data = await response.json() as any;
@@ -65,8 +77,6 @@ describe("Secrets and Environment Bindings", () => {
   });
 
   it("should provide default test secrets when none specified", async () => {
-    mf = await createMiniflareInstance({});
-
     const testScript = `
       export default {
         async fetch(request, env) {
@@ -78,16 +88,12 @@ describe("Secrets and Environment Bindings", () => {
       };
     `;
 
-    await mf.setOptions({
-      modules: true,
-      script: testScript,
-      d1Databases: { DB: ":memory:" },
-      bindings: {
-        GOOGLE_CLIENT_ID: "test-client-id",
-        GOOGLE_CLIENT_SECRET: "test-client-secret",
-        SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      },
+    // Initialize with script directly to ensure DB binding is preserved/set correctly
+    const result = await createMiniflareInstance({
+      script: testScript
     });
+    mf = result.mf;
+    persistPaths.push(result.persistPath);
 
     const response = await mf.dispatchFetch("http://localhost/");
     const data = await response.json() as any;
@@ -98,12 +104,6 @@ describe("Secrets and Environment Bindings", () => {
 
   it("should handle session secret of correct length", async () => {
     const validSessionSecret = "a".repeat(64); // 64 hex chars
-
-    mf = await createMiniflareInstance({
-      secrets: {
-        SESSION_SECRET: validSessionSecret,
-      },
-    });
 
     const testScript = `
       export default {
@@ -116,13 +116,14 @@ describe("Secrets and Environment Bindings", () => {
       };
     `;
 
-    await mf.setOptions({
-      modules: true,
-      script: testScript,
-      bindings: {
+    const result = await createMiniflareInstance({
+      secrets: {
         SESSION_SECRET: validSessionSecret,
       },
+      script: testScript
     });
+    mf = result.mf;
+    persistPaths.push(result.persistPath);
 
     const response = await mf.dispatchFetch("http://localhost/");
     const data = await response.json() as any;
@@ -138,14 +139,16 @@ describe("Secrets and Environment Bindings", () => {
       SESSION_SECRET: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
     };
 
-    mf = await createMiniflareInstance({ secrets: testSecrets });
-
     const testScript = `
       export default {
         async fetch(request, env) {
           // Test that we can access both DB and secrets
           const db = env.DB;
-          await db.prepare("SELECT 1 as test").first();
+          try {
+            await db.prepare("SELECT 1 as test").first();
+          } catch (e) {
+            return Response.json({ error: e.message }, { status: 500 });
+          }
 
           return Response.json({
             dbWorks: true,
@@ -156,12 +159,12 @@ describe("Secrets and Environment Bindings", () => {
       };
     `;
 
-    await mf.setOptions({
-      modules: true,
-      script: testScript,
-      d1Databases: { DB: ":memory:" },
-      bindings: testSecrets,
+    const result = await createMiniflareInstance({
+      secrets: testSecrets,
+      script: testScript
     });
+    mf = result.mf;
+    persistPaths.push(result.persistPath);
 
     const response = await mf.dispatchFetch("http://localhost/");
     const data = await response.json() as any;
@@ -172,11 +175,6 @@ describe("Secrets and Environment Bindings", () => {
   });
 
   it("should allow reconfiguring secrets for different instances", async () => {
-    // Test that we can create an instance with custom secrets
-    mf = await createMiniflareInstance({
-      secrets: { GOOGLE_CLIENT_ID: "custom-instance-id" },
-    });
-
     const testScript = `
       export default {
         async fetch(request, env) {
@@ -185,11 +183,13 @@ describe("Secrets and Environment Bindings", () => {
       };
     `;
 
-    await mf.setOptions({
-      modules: true,
-      script: testScript,
-      bindings: { GOOGLE_CLIENT_ID: "custom-instance-id" },
+    // Test that we can create an instance with custom secrets
+    const result = await createMiniflareInstance({
+      secrets: { GOOGLE_CLIENT_ID: "custom-instance-id" },
+      script: testScript
     });
+    mf = result.mf;
+    persistPaths.push(result.persistPath);
 
     const response = await mf.dispatchFetch("http://localhost/");
     const data = await response.json() as any;

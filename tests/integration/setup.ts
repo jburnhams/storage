@@ -1,6 +1,8 @@
 import { Miniflare } from "miniflare";
-import { readFileSync } from "fs";
+import { execSync } from "child_process";
+import { mkdtempSync, rmSync, existsSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 
 export interface TestEnv {
   DB: D1Database;
@@ -29,21 +31,55 @@ export interface SessionRow {
 }
 
 /**
+ * Applies D1 migrations using Wrangler
+ */
+export function applyWranglerMigrations(persistPath: string) {
+  try {
+    // We use --no-confirm to avoid interactive prompts (wrangler v3.114.x doesn't support --no-confirm, but it falls back to yes in non-interactive)
+    // We use --local because we are testing locally
+    // Removed --no-confirm as it's causing "Unknown argument: confirm" errors with the installed wrangler version
+    execSync(
+      `npx wrangler d1 migrations apply DB --local --persist-to "${persistPath}"`,
+      { stdio: "inherit" } // Inherit stdio to see output in tests if needed
+    );
+  } catch (error) {
+    console.error("Failed to apply migrations:", error);
+    throw error;
+  }
+}
+
+/**
  * Creates a Miniflare instance configured for testing
  * with D1 database and secrets
  */
 export async function createMiniflareInstance(options: {
   secrets?: Record<string, string>;
   persistPath?: string;
-}): Promise<Miniflare> {
-  const { secrets = {}, persistPath } = options;
+  script?: string;
+}): Promise<{ mf: Miniflare; persistPath: string }> {
+  const { secrets = {}, persistPath: providedPersistPath, script = "" } = options;
+
+  // Use provided path or create a temporary one
+  const persistPath = providedPersistPath || mkdtempSync(join(tmpdir(), "miniflare-test-"));
+
+  // Apply migrations to the persistence path
+  // Only apply if we created the path (fresh) OR if explicitly asked?
+  // Actually, wrangler is idempotent so we can always apply, but it might be slow.
+  // Ideally we only apply on creation.
+  // But for simplicity, let's keep it here.
+  applyWranglerMigrations(persistPath);
+
+  // Wrangler creates a nested directory structure: <persistPath>/v3/d1
+  const d1PersistPath = join(persistPath, "v3", "d1");
 
   const mf = new Miniflare({
     modules: true,
-    script: "",
+    script: script,
     d1Databases: {
-      DB: persistPath || ":memory:",
+      // Must match the binding name and ID in wrangler.toml or the one used in migration apply
+      DB: "b1c3f037-ad29-4440-a670-f2cfdfdb36a3",
     },
+    d1Persist: d1PersistPath,
     bindings: {
       GOOGLE_CLIENT_ID: secrets.GOOGLE_CLIENT_ID || "test-client-id",
       GOOGLE_CLIENT_SECRET: secrets.GOOGLE_CLIENT_SECRET || "test-client-secret",
@@ -51,47 +87,7 @@ export async function createMiniflareInstance(options: {
     },
   });
 
-  return mf;
-}
-
-/**
- * Runs database migrations on a D1 database
- */
-export async function runMigrations(db: D1Database): Promise<void> {
-  // Enable foreign keys (required for D1/SQLite)
-  await db.prepare("PRAGMA foreign_keys = ON").run();
-
-  const migrationPath = join(process.cwd(), "migrations", "0001_create_users_and_sessions.sql");
-  const migrationSQL = readFileSync(migrationPath, "utf-8");
-
-  // Remove comments and split by semicolon
-  const cleanedSQL = migrationSQL
-    .split('\n')
-    .filter(line => !line.trim().startsWith('--'))
-    .join('\n');
-
-  // Split by semicolon and execute each statement
-  const statements = cleanedSQL
-    .split(";")
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-
-  for (const statement of statements) {
-    try {
-      // Add IF NOT EXISTS to index creation for idempotency
-      let finalStatement = statement;
-      if (statement.toUpperCase().includes('CREATE INDEX')) {
-        finalStatement = statement.replace(/CREATE INDEX/i, 'CREATE INDEX IF NOT EXISTS');
-      }
-      await db.prepare(finalStatement).run();
-    } catch (error) {
-      // Ignore "already exists" errors for idempotency
-      if (error instanceof Error && !error.message.includes('already exists')) {
-        console.error("Failed to execute statement:", statement);
-        throw error;
-      }
-    }
-  }
+  return { mf, persistPath };
 }
 
 /**
@@ -159,6 +155,9 @@ export async function seedTestData(db: D1Database) {
 export async function cleanDatabase(db: D1Database): Promise<void> {
   // Enable foreign keys to ensure cascade deletes work
   await db.prepare("PRAGMA foreign_keys = ON").run();
+
+  // We need to order deletions to avoid constraint violations if CASCADE isn't working for some reason,
+  // though it should be.
   await db.prepare("DELETE FROM sessions").run();
   await db.prepare("DELETE FROM users").run();
 }

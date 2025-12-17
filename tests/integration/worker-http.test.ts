@@ -5,7 +5,6 @@ import { readFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import {
   createMiniflareInstance,
-  runMigrations,
   seedTestData,
   cleanDatabase,
   UserRow,
@@ -37,37 +36,31 @@ describe("Worker HTTP Integration Tests", () => {
   let mf: Miniflare;
   let db: D1Database;
   let workerScript: string;
+  let persistPath: string;
 
   beforeAll(async () => {
     // Bundle the worker once for all tests
     workerScript = await bundleWorker();
 
-    mf = await createMiniflareInstance({
+    // Pass the script directly to createMiniflareInstance so we don't have to restart it
+    // This handles DB setup and worker script loading in one go with the correct bindings
+    const result = await createMiniflareInstance({
       secrets: {
         GOOGLE_CLIENT_ID: "test-client-id",
         GOOGLE_CLIENT_SECRET: "test-client-secret",
         SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       },
-    });
-
-    db = await mf.getD1Database("DB");
-    await runMigrations(db);
-
-    // Load the bundled worker
-    await mf.setOptions({
-      modules: true,
       script: workerScript,
-      d1Databases: { DB: ":memory:" },
-      bindings: {
-        GOOGLE_CLIENT_ID: "test-client-id",
-        GOOGLE_CLIENT_SECRET: "test-client-secret",
-        SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      },
     });
+    mf = result.mf;
+    persistPath = result.persistPath;
+
+    // Get DB reference
+    db = await mf.getD1Database("DB");
   });
 
   beforeEach(async () => {
-    // Get fresh DB reference after setOptions
+    // We don't need to re-get DB if mf hasn't changed, but it doesn't hurt
     db = await mf.getD1Database("DB");
     await cleanDatabase(db);
     await seedTestData(db);
@@ -75,6 +68,12 @@ describe("Worker HTTP Integration Tests", () => {
 
   afterAll(async () => {
     await mf.dispose();
+    try {
+      const { rmSync } = await import("fs");
+      rmSync(persistPath, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Failed to clean up D1 persistence:", e);
+    }
   });
 
   describe("Health Check Endpoint", () => {
