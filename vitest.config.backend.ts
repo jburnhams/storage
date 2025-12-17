@@ -25,7 +25,7 @@ export default defineWorkersConfig(async () => {
       globals: true,
       include: ["tests/unit/**/*.test.ts"],
       coverage: {
-        provider: "v8",
+        provider: "istanbul",
         reporter: ["text", "lcov"],
       },
     },
