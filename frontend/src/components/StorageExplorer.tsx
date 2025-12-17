@@ -49,14 +49,25 @@ export function StorageExplorer({ user }: Props) {
         // url += "?" + params.toString();
 
         fetch(url)
-            .then(res => res.json())
+            .then(async res => {
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch: ${res.status}`);
+                }
+                return res.json();
+            })
             .then(data => {
-                setEntries(data);
+                if (Array.isArray(data)) {
+                    setEntries(data);
+                } else {
+                    console.error("Expected array of entries, got:", data);
+                    setEntries([]);
+                }
                 setLoading(false);
             })
             .catch(err => {
                 console.error(err);
                 setLoading(false);
+                // Optionally handle error state
             });
     };
 

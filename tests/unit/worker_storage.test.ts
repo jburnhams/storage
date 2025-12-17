@@ -1,8 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleRequest } from "../../src/worker";
+import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from "cloudflare:test";
 import * as storage from "../../src/storage";
 import * as session from "../../src/session";
-import type { Env, KeyValueEntryJoined, User } from "../../src/types";
+import type { KeyValueEntryJoined, User } from "../../src/types";
+
+// We will KEEP mocking the internal logic (storage/session) here because
+// this test file specifically checks the "Controller" layer logic (status codes, JSON format)
+// without needing to set up the full database state for every single test case if we don't want to.
+// HOWEVER, if we are migrating to `cloudflare:test`, we usually *can* rely on the real DB easily.
+// But the original test was mocking specific return values (like "deny access to other user's entry")
+// which is harder to setup with real data (requires creating 2 users, etc).
+// So keeping mocks for the *business logic* while using the *real worker environment* for request handling is a good hybrid.
 
 // Mock dependencies
 vi.mock("../../src/storage", async () => {
@@ -15,18 +24,10 @@ vi.mock("../../src/storage", async () => {
         listEntries: vi.fn(),
         getEntryById: vi.fn(),
         getEntryByKeySecret: vi.fn(),
-        // entryToResponse is preserved
     };
 });
 vi.mock("../../src/session");
 vi.mock("../../src/cookie");
-
-const mockEnv = {
-  DB: {},
-  GOOGLE_CLIENT_ID: "mock",
-  GOOGLE_CLIENT_SECRET: "mock",
-  SESSION_SECRET: "mock",
-} as Env;
 
 const mockUser: User = {
   id: 1,
@@ -37,12 +38,6 @@ const mockUser: User = {
   created_at: "now",
   updated_at: "now",
   last_login_at: null
-};
-
-const mockAdminUser: User = {
-  ...mockUser,
-  id: 2,
-  is_admin: 1
 };
 
 const mockEntry: KeyValueEntryJoined = {
@@ -61,11 +56,14 @@ const mockEntry: KeyValueEntryJoined = {
 
 describe("Worker Storage API", () => {
     beforeEach(async () => {
+        await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
         vi.resetAllMocks();
-        // Mock Session to return user
+        // Even though we mock storage/session, the worker might access DB for other things (like health check or session validation if not fully mocked).
+        // But here we mock `session.getSession`, so it shouldn't hit DB for auth.
+
         vi.spyOn(session, "getSession").mockResolvedValue({ id: "sess", user_id: 1 } as any);
         vi.spyOn(session, "getUserById").mockResolvedValue(mockUser);
-        // Mock cookie to return session id
+
         const cookie = await import("../../src/cookie");
         (cookie.getSessionIdFromCookie as any) = vi.fn().mockReturnValue("sess");
     });
@@ -74,7 +72,9 @@ describe("Worker Storage API", () => {
         (storage.listEntries as any).mockResolvedValue([mockEntry]);
 
         const req = new Request("http://localhost/api/storage/entries");
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
         const data = await res.json();
@@ -86,7 +86,9 @@ describe("Worker Storage API", () => {
         (storage.getEntryById as any).mockResolvedValue(mockEntry);
 
         const req = new Request("http://localhost/api/storage/entry/1");
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
         const data = await res.json();
@@ -97,7 +99,9 @@ describe("Worker Storage API", () => {
         (storage.getEntryById as any).mockResolvedValue({ ...mockEntry, user_id: 999 });
 
         const req = new Request("http://localhost/api/storage/entry/1");
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(403);
     });
@@ -115,7 +119,9 @@ describe("Worker Storage API", () => {
             body: formData
         });
 
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
         expect(storage.createEntry).toHaveBeenCalled();
@@ -134,7 +140,9 @@ describe("Worker Storage API", () => {
             body: formData
         });
 
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
         expect(storage.updateEntry).toHaveBeenCalled();
@@ -148,7 +156,9 @@ describe("Worker Storage API", () => {
             method: "DELETE"
         });
 
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
         expect(storage.deleteEntry).toHaveBeenCalledWith(expect.anything(), 1);
@@ -158,7 +168,9 @@ describe("Worker Storage API", () => {
         (storage.getEntryByKeySecret as any).mockResolvedValue(mockEntry);
 
         const req = new Request("http://localhost/api/public/share?key=test.txt&secret=hash");
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
         const data = await res.json();
@@ -167,7 +179,9 @@ describe("Worker Storage API", () => {
 
     it("should handle invalid id for get", async () => {
         const req = new Request("http://localhost/api/storage/entry/abc");
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
         expect(res.status).toBe(400);
     });
 
@@ -175,7 +189,9 @@ describe("Worker Storage API", () => {
         const formData = new FormData();
         formData.append("key", "test");
         const req = new Request("http://localhost/api/storage/entry", { method: "POST", body: formData });
-        const res = await handleRequest(req, mockEnv, { waitUntil: vi.fn() });
+        const ctx = createExecutionContext();
+        const res = await handleRequest(req, env, ctx);
+        await waitOnExecutionContext(ctx);
         expect(res.status).toBe(400);
     });
 });
