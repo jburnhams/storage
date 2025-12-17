@@ -1,12 +1,12 @@
 import type { Env, KeyValueEntryJoined, User, ValueEntry } from "./types";
 
 /**
- * Calculate MD5 hash of content
+ * Calculate SHA-1 hash of content
  */
 async function calculateSecret(content: string | ArrayBuffer): Promise<string> {
   const encoder = new TextEncoder();
   const data = typeof content === "string" ? encoder.encode(content) : content;
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
+  const hashBuffer = await crypto.subtle.digest("SHA-1", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -26,7 +26,7 @@ async function findOrCreateValue(
     // Look up by hash
     // We also check type, and ideally content to avoid collision.
     // D1 SELECT blob comparison might be tricky, so we rely on hash + type + string check.
-    // If blob, we might rely on hash strength (MD5 is weak but sufficient for this context probably).
+    // If blob, we might rely on hash strength (SHA-1 is weak but sufficient for this context probably).
     // Or we fetch and compare in JS? Fetching large blobs is expensive.
     // Let's rely on Hash + Type + StringValue check.
 
