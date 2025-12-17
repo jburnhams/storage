@@ -9,7 +9,7 @@ import {
 } from "../../src/storage";
 import type { User } from "../../src/types";
 
-// Note: In Node environment (Vitest), crypto.subtle.digest for MD5 might not be available or might differ.
+// Note: In Node environment (Vitest), crypto.subtle.digest for SHA-1 might not be available or might differ.
 // However, the Cloudflare worker pool environment might shim it.
 // The previous test mocked it. Let's see if we need to mock it or if the real one works.
 // For D1, we use the real 'env.DB'.
