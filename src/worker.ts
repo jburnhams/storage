@@ -665,6 +665,7 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
     const stringValue = formData.get("string_value") as string | null;
     const file = formData.get("file") as File | null;
     const collectionIdStr = formData.get("collection_id") as string | null;
+    const metadata = formData.get("metadata") as string | null;
 
     if (!key || !type) {
       return createErrorResponse("INVALID_REQUEST", "Key and Type are required", 400);
@@ -698,6 +699,9 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
        }
     }
 
+    // Origin tracking
+    const origin = request.headers.get("Origin");
+
     const entry = await createEntry(
       env,
       user.id,
@@ -706,7 +710,9 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
       stringValue,
       blobValue,
       filename,
-      collectionId
+      collectionId,
+      metadata,
+      origin
     );
 
     return createJsonResponse(entryToResponse(entry));
@@ -741,6 +747,7 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
     const stringValue = formData.get("string_value") as string | null;
     const file = formData.get("file") as File | null;
     const collectionIdStr = formData.get("collection_id") as string | null;
+    const metadata = formData.get("metadata") as string | null;
 
     if (!type) {
         return createErrorResponse("INVALID_REQUEST", "Type is required", 400);
@@ -800,7 +807,8 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
       blobValue,
       type,
       filename,
-      collectionId
+      collectionId,
+      metadata
     );
 
     if (!entry) return createErrorResponse("UPDATE_FAILED", "Update failed", 500);
@@ -883,7 +891,10 @@ async function handleCreateCollection(request: Request, env: Env): Promise<Respo
     const body = await request.json() as any;
     if (!body.name) return createErrorResponse("INVALID_REQUEST", "Name required", 400);
 
-    const collection = await createCollection(env, user.id, body.name, body.description);
+    // Origin tracking
+    const origin = request.headers.get("Origin");
+
+    const collection = await createCollection(env, user.id, body.name, body.description, body.metadata, origin);
     return createJsonResponse(collection);
 }
 
@@ -913,7 +924,7 @@ async function handleUpdateCollection(request: Request, env: Env, idStr: string)
     const body = await request.json() as any;
     if (!body.name) return createErrorResponse("INVALID_REQUEST", "Name required", 400);
 
-    const updated = await updateCollection(env, id, body.name, body.description);
+    const updated = await updateCollection(env, id, body.name, body.description, body.metadata);
     return createJsonResponse(updated);
 }
 

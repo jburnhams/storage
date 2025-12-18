@@ -175,7 +175,9 @@ export async function createEntry(
   stringValue: string | null,
   blobValue: ArrayBuffer | null,
   filename?: string,
-  collectionId?: number | null
+  collectionId?: number | null,
+  metadata?: string | null,
+  origin?: string | null
 ): Promise<KeyValueEntryJoined> {
   // Validate constraints
   if ((stringValue === null && blobValue === null) || (stringValue !== null && blobValue !== null)) {
@@ -185,13 +187,13 @@ export async function createEntry(
   const valueEntry = await findOrCreateValue(env, stringValue, blobValue, type);
 
   const query = `
-    INSERT INTO key_value_entries (key, value_id, filename, user_id, collection_id)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO key_value_entries (key, value_id, filename, user_id, collection_id, metadata, origin)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `;
 
   const result = await env.DB.prepare(query)
-    .bind(key, valueEntry.id, filename || null, userId, collectionId || null)
+    .bind(key, valueEntry.id, filename || null, userId, collectionId || null, metadata || null, origin || null)
     .first<any>();
 
   if (!result) {
@@ -245,10 +247,11 @@ export async function updateEntry(
   blobValue: ArrayBuffer | null,
   type: string,
   filename?: string,
-  collectionId?: number | null
+  collectionId?: number | null,
+  metadata?: string | null
 ): Promise<KeyValueEntryJoined | null> {
     // Note: updateEntry logic in worker.ts passes null/null if preserving content.
-    // If preserving content (stringValue & blobValue both null), we only update key/filename/updated_at.
+    // If preserving content (stringValue & blobValue both null), we only update key/filename/updated_at/metadata.
 
     let updateFields = "key = ?, filename = ?, updated_at = datetime('now')";
     const params: any[] = [key, filename || null];
@@ -261,6 +264,11 @@ export async function updateEntry(
     if (collectionId !== undefined) {
       updateFields += ", collection_id = ?";
       params.push(collectionId);
+    }
+
+    if (metadata !== undefined) {
+        updateFields += ", metadata = ?";
+        params.push(metadata || null);
     }
 
     if (stringValue === null && blobValue === null) {
@@ -324,7 +332,7 @@ export async function listEntries(
 ): Promise<KeyValueEntryJoined[]> {
   // We need to join to get type, string_value, secret
   let query = `
-    SELECT k.id, k.key, k.filename, k.user_id, k.created_at, k.updated_at, k.collection_id,
+    SELECT k.id, k.key, k.filename, k.user_id, k.created_at, k.updated_at, k.collection_id, k.metadata, k.origin,
            v.hash as secret, v.type, v.string_value, v.size, v.is_multipart
            -- exclude blob_value for list performance
     FROM key_value_entries k
@@ -387,16 +395,18 @@ export async function createCollection(
   env: Env,
   userId: number,
   name: string,
-  description?: string
+  description?: string,
+  metadata?: string | null,
+  origin?: string | null
 ): Promise<KeyValueCollection> {
   const secret = generateRandomSecret();
   const query = `
-    INSERT INTO key_value_collections (name, description, secret, user_id)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO key_value_collections (name, description, secret, user_id, metadata, origin)
+    VALUES (?, ?, ?, ?, ?, ?)
     RETURNING *
   `;
   const collection = await env.DB.prepare(query)
-    .bind(name, description || null, secret, userId)
+    .bind(name, description || null, secret, userId, metadata || null, origin || null)
     .first<KeyValueCollection>();
 
   if (!collection) throw new Error("Failed to create collection");
@@ -422,15 +432,16 @@ export async function updateCollection(
   env: Env,
   id: number,
   name: string,
-  description?: string
+  description?: string,
+  metadata?: string | null
 ): Promise<KeyValueCollection | null> {
   const query = `
     UPDATE key_value_collections
-    SET name = ?, description = ?, updated_at = datetime('now')
+    SET name = ?, description = ?, metadata = ?, updated_at = datetime('now')
     WHERE id = ?
     RETURNING *
   `;
-  return await env.DB.prepare(query).bind(name, description || null, id).first<KeyValueCollection>();
+  return await env.DB.prepare(query).bind(name, description || null, metadata || null, id).first<KeyValueCollection>();
 }
 
 export async function deleteCollection(env: Env, id: number): Promise<void> {

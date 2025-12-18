@@ -27,6 +27,8 @@ export interface KeyValueCollection {
   user_id: number;
   created_at: string;
   updated_at: string;
+  metadata: string | null;
+  origin: string | null;
 }
 
 export interface ValueEntry {
@@ -49,6 +51,8 @@ export interface KeyValueEntry {
   collection_id: number | null;
   created_at: string;
   updated_at: string;
+  metadata: string | null;
+  origin: string | null;
 }
 
 // Joined representation for API
@@ -96,6 +100,8 @@ export interface KeyValueCollectionResponse {
   user_id: number;
   created_at: string;
   updated_at: string;
+  metadata: string | null;
+  origin: string | null;
 }
 
 export interface KeyValueEntryResponse {
@@ -110,6 +116,8 @@ export interface KeyValueEntryResponse {
   collection_id: number | null;
   created_at: string;
   updated_at: string;
+  metadata: string | null;
+  origin: string | null;
 }
 
 // ===== API Request Types =====
@@ -120,6 +128,7 @@ export interface CreateEntryRequest {
   type: string;
   filename?: string;
   collection_id?: number | null;
+  metadata?: string;
   // For JSON API usage, we might accept base64 for blobs or rely on multipart/form-data
 }
 

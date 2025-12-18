@@ -9,6 +9,8 @@ interface Collection {
     secret: string;
     created_at: string;
     updated_at: string;
+    metadata: string | null;
+    origin: string | null;
 }
 
 interface Props {
@@ -96,6 +98,7 @@ export function CollectionsManager({ user }: Props) {
                             <tr>
                                 <th>Name</th>
                                 <th>Description</th>
+                                <th>Meta</th>
                                 <th>Secret</th>
                                 <th>Actions</th>
                             </tr>
@@ -109,6 +112,7 @@ export function CollectionsManager({ user }: Props) {
                                         </a>
                                     </td>
                                     <td>{c.description}</td>
+                                    <td>{c.metadata ? "✅" : ""}</td>
                                     <td>
                                         <code title="Use this secret for auth-less access">{c.secret}</code>
                                     </td>
@@ -127,7 +131,7 @@ export function CollectionsManager({ user }: Props) {
                                 </tr>
                             ))}
                             {collections.length === 0 && (
-                                <tr><td colSpan={4}>No collections found</td></tr>
+                                <tr><td colSpan={5}>No collections found</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -148,11 +152,24 @@ export function CollectionsManager({ user }: Props) {
 function CollectionModal({ collection, onClose, onSave }: any) {
     const [name, setName] = useState(collection ? collection.name : "");
     const [description, setDescription] = useState(collection ? collection.description || "" : "");
+    const [metadata, setMetadata] = useState(collection ? collection.metadata || "" : "");
+    const [error, setError] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
+        setError("");
+
+        if (metadata) {
+            try {
+                JSON.parse(metadata);
+            } catch (e) {
+                setError("Metadata must be valid JSON");
+                setSubmitting(false);
+                return;
+            }
+        }
 
         const url = collection ? `/api/collections/${collection.id}` : "/api/collections";
         const method = collection ? "PUT" : "POST";
@@ -161,7 +178,7 @@ function CollectionModal({ collection, onClose, onSave }: any) {
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, description })
+                body: JSON.stringify({ name, description, metadata })
             });
 
             if (!res.ok) throw new Error("Failed to save");
@@ -177,6 +194,7 @@ function CollectionModal({ collection, onClose, onSave }: any) {
         <div className="modal-overlay">
             <div className="modal">
                 <h2>{collection ? "Edit Collection" : "New Collection"}</h2>
+                {error && <div className="error">{error}</div>}
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
                         <label>Name</label>
@@ -185,6 +203,15 @@ function CollectionModal({ collection, onClose, onSave }: any) {
                     <div className="form-group">
                         <label>Description</label>
                         <textarea value={description} onChange={e => setDescription(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                        <label>Metadata (JSON)</label>
+                        <textarea
+                            value={metadata}
+                            onChange={e => setMetadata(e.target.value)}
+                            rows={4}
+                            placeholder='{"project": "alpha"}'
+                        />
                     </div>
                     <div className="actions">
                         <button type="button" onClick={onClose}>Cancel</button>
