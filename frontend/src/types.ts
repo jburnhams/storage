@@ -22,3 +22,30 @@ export interface ErrorResponse {
   error: string;
   message: string;
 }
+
+export interface KeyValueCollection {
+    id: number;
+    name: string;
+    description: string | null;
+    secret: string;
+    created_at: string;
+    updated_at: string;
+    metadata: string | null;
+    origin: string | null;
+}
+
+export interface KeyValueEntryResponse {
+  id: number;
+  key: string;
+  string_value: string | null;
+  has_blob: boolean;
+  secret: string;
+  type: string;
+  filename: string | null;
+  user_id: number;
+  collection_id: number | null;
+  created_at: string;
+  updated_at: string;
+  metadata: string | null;
+  origin: string | null;
+}

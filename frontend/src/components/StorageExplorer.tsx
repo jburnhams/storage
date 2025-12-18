@@ -13,6 +13,8 @@ interface KeyValueEntryResponse {
   collection_id: number | null;
   created_at: string;
   updated_at: string;
+  metadata: string | null;
+  origin: string | null;
 }
 
 interface Collection {
@@ -22,6 +24,8 @@ interface Collection {
     secret: string;
     created_at: string;
     updated_at: string;
+    metadata: string | null;
+    origin: string | null;
 }
 
 interface Props {
@@ -325,6 +329,7 @@ export function StorageExplorer({ user, collection }: Props) {
                                     {!collection && includeCollections && <th>Col ID</th>}
                                     <th>Type</th>
                                     <th>Modified</th>
+                                    <th>Meta</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -344,6 +349,7 @@ export function StorageExplorer({ user, collection }: Props) {
                                         {!collection && includeCollections && <td>{entry.collection_id || "-"}</td>}
                                         <td>{entry.type}</td>
                                         <td>{new Date(entry.updated_at).toLocaleString()}</td>
+                                        <td>{entry.metadata ? "✅" : ""}</td>
                                         <td>
                                             <button onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }}>Edit</button>
                                             <button onClick={() => handleDelete([entry.id])}>Delete</button>
@@ -356,7 +362,7 @@ export function StorageExplorer({ user, collection }: Props) {
                                     </tr>
                                 ))}
                                 {filteredEntries.length === 0 && (
-                                    <tr><td colSpan={includeCollections && !collection ? 6 : 5}>No entries found</td></tr>
+                                    <tr><td colSpan={includeCollections && !collection ? 7 : 6}>No entries found</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -410,6 +416,7 @@ function EntryModal({ entry, onClose, onSave, currentPath, collectionId }: any) 
     const [key, setKey] = useState(entry ? entry.key : (currentPath ? `${currentPath}/` : ""));
     const [type, setType] = useState(entry ? entry.type : "text/plain");
     const [stringValue, setStringValue] = useState(entry ? entry.string_value || "" : "");
+    const [metadata, setMetadata] = useState(entry ? entry.metadata || "" : "");
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState("");
     const [submitting, setSubmitting] = useState(false);
@@ -429,10 +436,22 @@ function EntryModal({ entry, onClose, onSave, currentPath, collectionId }: any) 
         setSubmitting(true);
         setError("");
 
+        // Validate JSON
+        if (metadata) {
+            try {
+                JSON.parse(metadata);
+            } catch (e) {
+                setError("Metadata must be valid JSON");
+                setSubmitting(false);
+                return;
+            }
+        }
+
         const formData = new FormData();
         formData.append("type", type);
         // Rename support: send key even for updates
         formData.append("key", key);
+        if (metadata) formData.append("metadata", metadata);
 
         if (collectionId) {
             formData.append("collection_id", collectionId.toString());
@@ -515,6 +534,16 @@ function EntryModal({ entry, onClose, onSave, currentPath, collectionId }: any) 
                             />
                         </div>
                     )}
+
+                    <div className="form-group">
+                        <label>Metadata (JSON)</label>
+                        <textarea
+                            value={metadata}
+                            onChange={e => setMetadata(e.target.value)}
+                            rows={4}
+                            placeholder='{"tags": ["important"], "version": 1}'
+                        />
+                    </div>
 
                     <div className="form-group">
                         <label>File Upload {entry && "(Overwrites existing content)"}</label>
