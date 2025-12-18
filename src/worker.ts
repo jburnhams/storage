@@ -11,6 +11,8 @@ import type {
 } from "./types";
 import {
   generateState,
+  encodeState,
+  decodeState,
   getRedirectUri,
   getGoogleAuthUrl,
   exchangeCodeForToken,
@@ -75,6 +77,27 @@ function createErrorResponse(
   });
 }
 
+function createUnauthorizedResponse(
+  request: Request,
+  message: string
+): Response {
+  const url = new URL(request.url);
+  const loginUrl = `${url.origin}/auth/login`;
+
+  const errorBody = {
+    error: "UNAUTHORIZED",
+    message,
+    login_url: loginUrl,
+  };
+
+  return new Response(JSON.stringify(errorBody), {
+    status: 401,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
 function createJsonResponse(data: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -116,7 +139,12 @@ async function getCurrentUser(
  * Handle Google OAuth login initiation
  */
 async function handleLogin(request: Request, env: Env): Promise<Response> {
-  const state = generateState();
+  const url = new URL(request.url);
+  const redirect = url.searchParams.get("redirect") || undefined;
+
+  const nonce = generateState();
+  const state = encodeState(nonce, redirect);
+
   const redirectUri = getRedirectUri(request);
   const authUrl = getGoogleAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, state);
 
@@ -187,11 +215,15 @@ async function handleCallback(
     // Create session
     const session = await createSession(user.id, env);
 
-    // Redirect to home with session cookie
+    // Decode state to check for redirect
+    const { redirect } = decodeState(state);
+    const destination = redirect || "/";
+
+    // Redirect to destination with session cookie
     return new Response(null, {
       status: 302,
       headers: {
-        Location: "/",
+        Location: destination,
         "Set-Cookie": setSessionCookie(session.id, request),
       },
     });
@@ -246,17 +278,17 @@ async function handleGetSession(
 ): Promise<Response> {
   const sessionId = getSessionIdFromCookie(request);
   if (!sessionId) {
-    return createErrorResponse("UNAUTHORIZED", "No session found", 401);
+    return createUnauthorizedResponse(request, "No session found");
   }
 
   const session = await getSession(sessionId, env);
   if (!session) {
-    return createErrorResponse("UNAUTHORIZED", "Invalid or expired session", 401);
+    return createUnauthorizedResponse(request, "Invalid or expired session");
   }
 
   const user = await getUserById(session.user_id, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "User not found", 401);
+    return createUnauthorizedResponse(request, "User not found");
   }
 
   // Update session last used
@@ -274,7 +306,7 @@ async function handleGetSession(
 async function handleGetUser(request: Request, env: Env): Promise<Response> {
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   return createJsonResponse(userToResponse(user));
@@ -289,7 +321,7 @@ async function handleGetAllUsers(
 ): Promise<Response> {
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   if (!isUserAdmin(user)) {
@@ -309,7 +341,7 @@ async function handleGetAllSessions(
 ): Promise<Response> {
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   if (!isUserAdmin(user)) {
@@ -329,7 +361,7 @@ async function handlePromoteAdmin(
 ): Promise<Response> {
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   if (!isUserAdmin(user)) {
@@ -525,7 +557,7 @@ export async function handleRequest(
 async function handleListEntries(request: Request, env: Env): Promise<Response> {
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   const url = new URL(request.url);
@@ -565,7 +597,7 @@ async function handleGetEntry(request: Request, env: Env, idStr: string): Promis
 
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   const entry = await getEntryById(env, id);
@@ -599,7 +631,7 @@ async function handleGetEntry(request: Request, env: Env, idStr: string): Promis
 async function handleCreateEntry(request: Request, env: Env): Promise<Response> {
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   try {
@@ -666,7 +698,7 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
 
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   const existing = await getEntryById(env, id);
@@ -762,7 +794,7 @@ async function handleDeleteEntry(request: Request, env: Env, idStr: string): Pro
 
   const user = await getCurrentUser(request, env);
   if (!user) {
-    return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    return createUnauthorizedResponse(request, "Not authenticated");
   }
 
   const existing = await getEntryById(env, id);
@@ -815,14 +847,14 @@ async function handlePublicShare(request: Request, env: Env): Promise<Response> 
 
 async function handleListCollections(request: Request, env: Env): Promise<Response> {
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
     const collections = await listCollections(env, user.id);
     return createJsonResponse(collections);
 }
 
 async function handleCreateCollection(request: Request, env: Env): Promise<Response> {
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const body = await request.json() as any;
     if (!body.name) return createErrorResponse("INVALID_REQUEST", "Name required", 400);
@@ -835,7 +867,7 @@ async function handleGetCollection(request: Request, env: Env, idStr: string): P
     const id = parseInt(idStr, 10);
     if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const collection = await getCollection(env, id);
     if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
@@ -848,7 +880,7 @@ async function handleUpdateCollection(request: Request, env: Env, idStr: string)
     const id = parseInt(idStr, 10);
     if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const collection = await getCollection(env, id);
     if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
@@ -865,7 +897,7 @@ async function handleDeleteCollection(request: Request, env: Env, idStr: string)
     const id = parseInt(idStr, 10);
     if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const collection = await getCollection(env, id);
     if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
@@ -879,7 +911,7 @@ async function handleCollectionZipUpload(request: Request, env: Env, idStr: stri
     const id = parseInt(idStr, 10);
     if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const collection = await getCollection(env, id);
     if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
@@ -937,7 +969,7 @@ async function handleCollectionZipDownload(request: Request, env: Env, idStr: st
     const id = parseInt(idStr, 10);
     if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const collection = await getCollection(env, id);
     if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
@@ -982,7 +1014,7 @@ async function handleCollectionJsonExport(request: Request, env: Env, idStr: str
     const id = parseInt(idStr, 10);
     if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     const collection = await getCollection(env, id);
     if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
@@ -1069,7 +1101,7 @@ async function handlePublicCollection(request: Request, env: Env): Promise<Respo
 
 async function handleBulkDownload(request: Request, env: Env): Promise<Response> {
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     try {
         const body = await request.json() as any;
@@ -1116,7 +1148,7 @@ async function handleBulkDownload(request: Request, env: Env): Promise<Response>
 
 async function handleBulkExport(request: Request, env: Env): Promise<Response> {
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     try {
         const body = await request.json() as any;
@@ -1159,7 +1191,7 @@ async function handleBulkExport(request: Request, env: Env): Promise<Response> {
 
 async function handleBulkDelete(request: Request, env: Env): Promise<Response> {
     const user = await getCurrentUser(request, env);
-    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    if (!user) return createUnauthorizedResponse(request, "Not authenticated");
 
     try {
         const body = await request.json() as any;

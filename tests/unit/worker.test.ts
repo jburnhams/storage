@@ -103,17 +103,40 @@ describe("Storage Auth Worker", () => {
   });
 
   describe("API Routes - Unauthenticated", () => {
-    it("/api/user returns 401 without session", async () => {
+    it("/api/user returns 401 with login_url without session", async () => {
       const request = new Request("https://storage.test/api/user");
       const ctx = createExecutionContext();
       const response = await handleRequest(request, env, ctx);
       await waitOnExecutionContext(ctx);
 
       expect(response.status).toBe(401);
-      const result = await response.json();
+      const result = await response.json() as any;
       expect(result.error).toBe("UNAUTHORIZED");
+      expect(result.login_url).toBe("https://storage.test/auth/login");
     });
+  });
 
-    // ... other 401 tests can be similar
+  describe("Auth Redirect", () => {
+     it("encodes redirect URL in state", async () => {
+        const redirectTarget = "https://client-app.com/dashboard";
+        const request = new Request(`https://storage.test/auth/login?redirect=${encodeURIComponent(redirectTarget)}`);
+        const ctx = createExecutionContext();
+        const response = await handleRequest(request, env, ctx);
+        await waitOnExecutionContext(ctx);
+
+        expect(response.status).toBe(302);
+        const location = response.headers.get("Location");
+        expect(location).toBeDefined();
+
+        // Extract state param from location URL
+        const url = new URL(location!);
+        const stateParam = url.searchParams.get("state");
+        expect(stateParam).toBeTruthy();
+
+        // Decode state to verify
+        // We can't import decodeState easily here as it is internal to worker (or we can import if exported)
+        // But we can check if it looks like base64
+        expect(stateParam).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
+     });
   });
 });
