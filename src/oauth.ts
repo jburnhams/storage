@@ -16,6 +16,42 @@ export function generateState(): string {
 }
 
 /**
+ * Encode state with optional redirect URL
+ */
+export function encodeState(nonce: string, redirectUrl?: string): string {
+  const stateObj = { nonce, redirect: redirectUrl };
+  const json = JSON.stringify(stateObj);
+  // Handle Unicode characters safely
+  const encoded = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
+      function toSolidBytes(match, p1) {
+          return String.fromCharCode(parseInt(p1, 16));
+  }));
+  return encoded;
+}
+
+/**
+ * Decode state to retrieve nonce and redirect URL
+ */
+export function decodeState(state: string): { nonce: string; redirect?: string } {
+  try {
+    const decoded = atob(state);
+    const json = decodeURIComponent(decoded.split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    const obj = JSON.parse(json);
+    return {
+      nonce: obj.nonce,
+      redirect: obj.redirect,
+    };
+  } catch (e) {
+    // Fallback for legacy states or invalid formats (though we shouldn't have legacy states in a stateless random generation, existing cookies might have old format if we just deployed)
+    // If decoding fails, treat the whole string as the nonce (legacy behavior)
+    return { nonce: state };
+  }
+}
+
+/**
  * Get the redirect URI based on the request host
  */
 export function getRedirectUri(request: Request): string {
