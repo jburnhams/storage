@@ -20,7 +20,13 @@ export function generateState(): string {
  */
 export function encodeState(nonce: string, redirectUrl?: string): string {
   const stateObj = { nonce, redirect: redirectUrl };
-  return btoa(JSON.stringify(stateObj));
+  const json = JSON.stringify(stateObj);
+  // Handle Unicode characters safely
+  const encoded = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
+      function toSolidBytes(match, p1) {
+          return String.fromCharCode(parseInt(p1, 16));
+  }));
+  return encoded;
 }
 
 /**
@@ -28,7 +34,11 @@ export function encodeState(nonce: string, redirectUrl?: string): string {
  */
 export function decodeState(state: string): { nonce: string; redirect?: string } {
   try {
-    const json = atob(state);
+    const decoded = atob(state);
+    const json = decodeURIComponent(decoded.split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
     const obj = JSON.parse(json);
     return {
       nonce: obj.nonce,

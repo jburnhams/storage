@@ -217,7 +217,31 @@ async function handleCallback(
 
     // Decode state to check for redirect
     const { redirect } = decodeState(state);
-    const destination = redirect || "/";
+    let destination = "/";
+
+    if (redirect) {
+        // Validate redirect URL to prevent Open Redirect
+        try {
+            // Allow relative paths (but disallow protocol-relative URLs starting with //)
+            if (redirect.startsWith("/") && !redirect.startsWith("//")) {
+                destination = redirect;
+            } else {
+                const url = new URL(redirect);
+                const hostname = url.hostname;
+                // Allow our domains and localhost
+                if (
+                    hostname.endsWith("jonathanburnhams.com") ||
+                    hostname.endsWith("jburnhams.workers.dev") ||
+                    hostname === "localhost" ||
+                    hostname.startsWith("127.0.0.1")
+                ) {
+                    destination = redirect;
+                }
+            }
+        } catch (e) {
+            // Invalid URL, fallback to /
+        }
+    }
 
     // Redirect to destination with session cookie
     return new Response(null, {

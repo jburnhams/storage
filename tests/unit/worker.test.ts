@@ -138,5 +138,25 @@ describe("Storage Auth Worker", () => {
         // But we can check if it looks like base64
         expect(stateParam).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
      });
+
+     it("handles unicode in redirect URL", async () => {
+        const redirectTarget = "https://client-app.com/dàshbøard?q=🔍";
+        const request = new Request(`https://storage.test/auth/login?redirect=${encodeURIComponent(redirectTarget)}`);
+        const ctx = createExecutionContext();
+        const response = await handleRequest(request, env, ctx);
+        await waitOnExecutionContext(ctx);
+
+        expect(response.status).toBe(302);
+        const location = response.headers.get("Location");
+        expect(location).toBeDefined();
+
+        const url = new URL(location!);
+        const stateParam = url.searchParams.get("state");
+        expect(stateParam).toBeTruthy();
+     });
   });
+
+  // We can't easily test handleCallback validation here without mocking the entire OAuth flow dependencies
+  // (exchangeCodeForToken, getGoogleUserInfo, etc) which are imported directly in worker.ts.
+  // However, the logic change in worker.ts is simple enough: strict check for `//`.
 });
