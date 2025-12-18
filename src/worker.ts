@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import { renderFrontend } from "./frontend";
 import type {
   Env,
@@ -5,6 +6,8 @@ import type {
   User,
   Session,
   PromoteAdminRequest,
+  KeyValueCollectionResponse,
+  KeyValueCollection,
 } from "./types";
 import {
   generateState,
@@ -36,6 +39,13 @@ import {
   listEntries,
   updateEntry,
   entryToResponse,
+  createCollection,
+  getCollection,
+  getCollectionBySecret,
+  listCollections,
+  updateCollection,
+  deleteCollection,
+  getEntryInCollection,
 } from "./storage";
 import {
   setSessionCookie,
@@ -422,6 +432,30 @@ export async function handleRequest(
     return handlePromoteAdmin(request, env);
   }
 
+  // Collection Routes
+  if (url.pathname.startsWith("/api/collections")) {
+      const parts = url.pathname.split("/");
+      // /api/collections (length 3)
+      // /api/collections/:id (length 4)
+      // /api/collections/:id/upload (length 5)
+
+      if (parts.length === 3) {
+          if (request.method === "GET") return handleListCollections(request, env);
+          if (request.method === "POST") return handleCreateCollection(request, env);
+      } else if (parts.length === 4) {
+          const id = parts[3];
+          if (request.method === "GET") return handleGetCollection(request, env, id);
+          if (request.method === "PUT") return handleUpdateCollection(request, env, id);
+          if (request.method === "DELETE") return handleDeleteCollection(request, env, id);
+      } else if (parts.length === 5) {
+          const id = parts[3];
+          const action = parts[4];
+          if (action === "upload" && request.method === "POST") return handleCollectionZipUpload(request, env, id);
+          if (action === "download" && request.method === "GET") return handleCollectionZipDownload(request, env, id);
+          if (action === "export" && request.method === "GET") return handleCollectionJsonExport(request, env, id);
+      }
+  }
+
   // Storage routes
   if (url.pathname.startsWith("/api/storage/entry")) {
     const parts = url.pathname.split("/");
@@ -453,6 +487,10 @@ export async function handleRequest(
     return handlePublicShare(request, env);
   }
 
+  if (url.pathname.startsWith("/api/public/collection")) {
+    return handlePublicCollection(request, env);
+  }
+
   // Health check
   if (url.pathname === "/health") {
     return new Response("ok", { status: 200 });
@@ -482,8 +520,31 @@ async function handleListEntries(request: Request, env: Env): Promise<Response> 
   const url = new URL(request.url);
   const prefix = url.searchParams.get("prefix") || undefined;
   const search = url.searchParams.get("search") || undefined;
+  const collectionIdStr = url.searchParams.get("collection_id");
+  const includeCollections = url.searchParams.get("include_collections") === "true";
 
-  const entries = await listEntries(env, user, prefix, search);
+  let collectionId: number | null = null; // Default to Root if not specified? Or All?
+  // Logic update:
+  // If collection_id param is present, parse it.
+  // If missing, it implies Root (null), unless we want 'All' which implies skipping the filter.
+  // But listEntries signature: collectionId can be null (Root) or number.
+  // How to represent "All"?
+  // Wait, existing logic was "All user entries".
+  // listEntries(env, user, prefix, search) -> defaulted to all?
+  // Updated listEntries: collectionId (optional).
+  // If collectionId === undefined, we just list by user (ALL).
+  // If collectionId === null, we list Root.
+  // If collectionId === number, we list Collection.
+
+  // The client usually wants Root by default.
+  // So if collection_id is missing, we assume Root (null) UNLESS `include_collections` is true (then All).
+
+  if (collectionIdStr) {
+      collectionId = parseInt(collectionIdStr, 10);
+      if (isNaN(collectionId)) return createErrorResponse("INVALID_REQUEST", "Invalid collection ID", 400);
+  }
+
+  const entries = await listEntries(env, user, prefix, search, collectionId, includeCollections);
   return createJsonResponse(entries.map(entryToResponse));
 }
 
@@ -521,11 +582,6 @@ async function handleGetEntry(request: Request, env: Env, idStr: string): Promis
 
   return createJsonResponse({
     ...entryToResponse(entry),
-    // For single entry fetch, we might want to include the full blob content if it's small/text?
-    // Or just let the client download it separately.
-    // The requirement says "use blob_value... have download option".
-    // Let's assume the JSON response contains string_value, and blob is fetched via separate call or param.
-    // But if string_value is set, we return it.
   });
 }
 
@@ -541,9 +597,16 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
     const type = formData.get("type") as string;
     const stringValue = formData.get("string_value") as string | null;
     const file = formData.get("file") as File | null;
+    const collectionIdStr = formData.get("collection_id") as string | null;
 
     if (!key || !type) {
       return createErrorResponse("INVALID_REQUEST", "Key and Type are required", 400);
+    }
+
+    let collectionId: number | null = null;
+    if (collectionIdStr) {
+        collectionId = parseInt(collectionIdStr, 10);
+        if (isNaN(collectionId)) return createErrorResponse("INVALID_REQUEST", "Invalid Collection ID", 400);
     }
 
     let blobValue: ArrayBuffer | null = null;
@@ -551,43 +614,32 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
 
     if (file) {
        if (typeof file === "string") {
-           // Workaround for Miniflare/workerd integration tests where files are parsed as strings
-           // The string seems to be a Latin-1 representation of the bytes
+           // Workaround for Miniflare/workerd integration tests
            const str = file as string;
            const buf = new Uint8Array(str.length);
            for (let i = 0; i < str.length; i++) {
                buf[i] = str.charCodeAt(i);
            }
            blobValue = buf.buffer;
-           filename = undefined; // Name is lost when parsing as string
+           filename = undefined;
        } else if (typeof file.arrayBuffer === 'function') {
            blobValue = await file.arrayBuffer();
            filename = file.name;
        } else {
-           // Fallback
            blobValue = await new Response(file).arrayBuffer();
            filename = file.name;
        }
     }
-
-    // Treat empty string as valid content if explicit (FormData sends "" for empty inputs usually)
-    // If null, it means not present.
-    // However, createEntry requires one of them.
-    // If no file and stringValue is null, we can default to empty string if type implies text?
-    // Or just pass what we have. If both null, createEntry throws.
-    // Note: formData.get returns null if missing, or string (possibly empty).
-
-    // If user explicitly sends string_value="" via form (even for empty file), it should be treated as "" not null.
-    // formData.get("string_value") returns "" for empty input.
 
     const entry = await createEntry(
       env,
       user.id,
       key,
       type,
-      stringValue, // Pass directly (allow "")
+      stringValue,
       blobValue,
-      filename
+      filename,
+      collectionId
     );
 
     return createJsonResponse(entryToResponse(entry));
@@ -621,31 +673,33 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
     const type = formData.get("type") as string;
     const stringValue = formData.get("string_value") as string | null;
     const file = formData.get("file") as File | null;
+    const collectionIdStr = formData.get("collection_id") as string | null;
 
     if (!type) {
         return createErrorResponse("INVALID_REQUEST", "Type is required", 400);
     }
 
-    // Default to existing key if not provided
     const targetKey = key || existing.key;
+
+    let collectionId: number | null | undefined = undefined;
+    // Note: If collectionId param is NOT sent, we assume undefined (don't update).
+    // If sent as empty string or "null", we interpret as null (Root).
+    // If sent as number, we interpret as number.
+    if (formData.has("collection_id")) {
+        if (!collectionIdStr || collectionIdStr === "null" || collectionIdStr === "") {
+            collectionId = null;
+        } else {
+            collectionId = parseInt(collectionIdStr, 10);
+            if (isNaN(collectionId)) return createErrorResponse("INVALID_REQUEST", "Invalid Collection ID", 400);
+        }
+    }
 
     let blobValue: ArrayBuffer | null = null;
     let filename: string | undefined = undefined;
-
-    // Determine if we are updating content or just metadata/key
     let finalStringValue = stringValue;
 
-    // Check if user provided new content
-    const hasNewContent = !!file || (stringValue !== null && stringValue !== "");
-    // Note: frontend sends "" for stringValue if not text type or empty.
-
-    // Refactored Update Logic with Value Deduping
-    // We need to decide if we are changing content (linking to new ValueEntry) or just renaming (Key only).
-
-    // If file provided -> New Content (Blob)
     if (file) {
        if (typeof file === "string") {
-           // Workaround for Miniflare/workerd integration tests where files are parsed as strings
            const str = file as string;
            const buf = new Uint8Array(str.length);
            for (let i = 0; i < str.length; i++) {
@@ -662,35 +716,12 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
        }
        finalStringValue = null;
     } else {
-        // No file.
-        // If stringValue is non-empty, it's new content.
-        // If stringValue is empty string (""), it might be cleared text OR just missing from form?
-        // Frontend sends "" for null/missing usually.
-        // If stringValue is null (not in form), definitely no change.
-
-        // Complex case: Changing from Blob to Text?
-        // Complex case: Changing Key only?
-
-        // Heuristic:
-        // If stringValue is null, we preserve existing.
-        // If stringValue is "" AND existing was blob, we preserve existing (don't clear blob with empty string implicitly).
-        // If stringValue is "" AND existing was string, we update to empty string?
-
         if (stringValue === null) {
-             // Preserving existing content.
-             // We pass nulls to updateEntry, which handles "preservation" logic now?
-             // Actually, storage.ts updateEntry creates new ValueEntry if passed non-nulls.
-             // If we pass nulls, it skips value update.
              finalStringValue = null;
              blobValue = null;
         } else if (stringValue === "" && existing.blob_value) {
-             // Treat as preserve.
              finalStringValue = null;
              blobValue = null;
-        } else {
-             // It's a string update (possibly empty).
-             // But if it matches existing string, we can optimization skip?
-             // findOrCreateValue will handle deduping anyway.
         }
     }
 
@@ -701,7 +732,8 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
       finalStringValue || null,
       blobValue,
       type,
-      filename
+      filename,
+      collectionId
     );
 
     if (!entry) return createErrorResponse("UPDATE_FAILED", "Update failed", 500);
@@ -737,13 +769,6 @@ async function handleDeleteEntry(request: Request, env: Env, idStr: string): Pro
 
 async function handlePublicShare(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    // /api/public/share/:key?secret=...
-    // Wait, path logic above was strict.
-    // url.pathname.startsWith("/api/public/share")
-    // Let's use query param for key to be safe with slashes?
-    // Requirement: /share/:key?secret=... (Frontend URL)
-    // API URL: /api/public/share?key=...&secret=...
-
     const key = url.searchParams.get("key");
     const secret = url.searchParams.get("secret");
 
@@ -755,11 +780,6 @@ async function handlePublicShare(request: Request, env: Env): Promise<Response> 
     if (!entry) {
         return createErrorResponse("NOT_FOUND", "Entry not found", 404);
     }
-
-    // Return content directly or JSON?
-    // "View entry". If it's a file, maybe serve it?
-    // "Preview for images".
-    // Let's return JSON metadata by default, and if ?download=true or ?raw=true serve content.
 
     if (url.searchParams.has("raw") || url.searchParams.has("download")) {
         if (entry.blob_value) {
@@ -778,6 +798,260 @@ async function handlePublicShare(request: Request, env: Env): Promise<Response> 
     }
 
     return createJsonResponse(entryToResponse(entry));
+}
+
+// ===== Collection Handlers =====
+
+async function handleListCollections(request: Request, env: Env): Promise<Response> {
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+    const collections = await listCollections(env, user.id);
+    return createJsonResponse(collections);
+}
+
+async function handleCreateCollection(request: Request, env: Env): Promise<Response> {
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const body = await request.json() as any;
+    if (!body.name) return createErrorResponse("INVALID_REQUEST", "Name required", 400);
+
+    const collection = await createCollection(env, user.id, body.name, body.description);
+    return createJsonResponse(collection);
+}
+
+async function handleGetCollection(request: Request, env: Env, idStr: string): Promise<Response> {
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const collection = await getCollection(env, id);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+    if (collection.user_id !== user.id && !user.is_admin) return createErrorResponse("FORBIDDEN", "Access denied", 403);
+
+    return createJsonResponse(collection);
+}
+
+async function handleUpdateCollection(request: Request, env: Env, idStr: string): Promise<Response> {
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const collection = await getCollection(env, id);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+    if (collection.user_id !== user.id && !user.is_admin) return createErrorResponse("FORBIDDEN", "Access denied", 403);
+
+    const body = await request.json() as any;
+    if (!body.name) return createErrorResponse("INVALID_REQUEST", "Name required", 400);
+
+    const updated = await updateCollection(env, id, body.name, body.description);
+    return createJsonResponse(updated);
+}
+
+async function handleDeleteCollection(request: Request, env: Env, idStr: string): Promise<Response> {
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const collection = await getCollection(env, id);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+    if (collection.user_id !== user.id && !user.is_admin) return createErrorResponse("FORBIDDEN", "Access denied", 403);
+
+    await deleteCollection(env, id);
+    return createJsonResponse({ success: true });
+}
+
+async function handleCollectionZipUpload(request: Request, env: Env, idStr: string): Promise<Response> {
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const collection = await getCollection(env, id);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+    if (collection.user_id !== user.id && !user.is_admin) return createErrorResponse("FORBIDDEN", "Access denied", 403);
+
+    const formData = await request.formData();
+    const file = formData.get("file") as File;
+    if (!file) return createErrorResponse("INVALID_REQUEST", "No file uploaded", 400);
+
+    let arrayBuffer: ArrayBuffer;
+    if (typeof file === "string") {
+        // Handle mock case
+        const str = file as string;
+        const buf = new Uint8Array(str.length);
+        for(let i=0; i<str.length; i++) buf[i] = str.charCodeAt(i);
+        arrayBuffer = buf.buffer;
+    } else {
+        arrayBuffer = await file.arrayBuffer();
+    }
+
+    try {
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const promises: Promise<any>[] = [];
+
+        zip.forEach((relativePath, zipEntry) => {
+            if (zipEntry.dir) return;
+
+            const promise = (async () => {
+                const content = await zipEntry.async("arraybuffer");
+                // Check if text? Heuristic: if small enough and no null bytes?
+                // Or just assume binary (blob).
+                // Requirement: "overwrite existing keys in collection".
+                // We use relativePath as key.
+
+                const existing = await getEntryInCollection(env, user.id, relativePath, id);
+                if (existing) {
+                    await updateEntry(env, existing.id, relativePath, null, content, "application/octet-stream", undefined, id);
+                } else {
+                    await createEntry(env, user.id, relativePath, "application/octet-stream", null, content, undefined, id);
+                }
+            })();
+            promises.push(promise);
+        });
+
+        await Promise.all(promises);
+        return createJsonResponse({ success: true, count: promises.length });
+
+    } catch (e) {
+        console.error("Zip processing error", e);
+        return createErrorResponse("SERVER_ERROR", "Failed to process zip", 500);
+    }
+}
+
+async function handleCollectionZipDownload(request: Request, env: Env, idStr: string): Promise<Response> {
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const collection = await getCollection(env, id);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+    if (collection.user_id !== user.id && !user.is_admin) return createErrorResponse("FORBIDDEN", "Access denied", 403);
+
+    try {
+        const entries = await listEntries(env, user, undefined, undefined, id);
+        // We need full content for zip
+        const zip = new JSZip();
+        const values: Record<string, string> = {};
+
+        for (const entryMeta of entries) {
+            const entry = await getEntryById(env, entryMeta.id); // fetch content
+            if (!entry) continue;
+
+            if (entry.blob_value) {
+                zip.file(entry.key, entry.blob_value as any);
+            } else if (entry.string_value !== null) {
+                values[entry.key] = entry.string_value;
+            }
+        }
+
+        if (Object.keys(values).length > 0) {
+            zip.file("values.json", JSON.stringify(values, null, 2));
+        }
+
+        const content = await zip.generateAsync({ type: "blob" });
+        return new Response(content as any, {
+            headers: {
+                "Content-Type": "application/zip",
+                "Content-Disposition": `attachment; filename="${collection.name}.zip"`
+            }
+        });
+
+    } catch (e) {
+         console.error("Zip generation error", e);
+         return createErrorResponse("SERVER_ERROR", String(e), 500);
+    }
+}
+
+async function handleCollectionJsonExport(request: Request, env: Env, idStr: string): Promise<Response> {
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) return createErrorResponse("INVALID_ID", "Invalid ID", 400);
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    const collection = await getCollection(env, id);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+    if (collection.user_id !== user.id && !user.is_admin) return createErrorResponse("FORBIDDEN", "Access denied", 403);
+
+    const entries = await listEntries(env, user, undefined, undefined, id);
+    const contents: any[] = [];
+
+    // Base URL for public links
+    const baseUrl = new URL(request.url).origin;
+
+    for (const entryMeta of entries) {
+        // Need to distinguish values vs files
+        const entry = await getEntryById(env, entryMeta.id);
+        if (!entry) continue;
+
+        if (entry.blob_value) {
+            contents.push({
+                key: entry.key,
+                type: "file",
+                mime_type: entry.type,
+                url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`
+            });
+        } else {
+            contents.push({
+                key: entry.key,
+                type: "value",
+                value: entry.string_value
+            });
+        }
+    }
+
+    return createJsonResponse({
+        ...collection,
+        contents
+    });
+}
+
+async function handlePublicCollection(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    const secret = url.searchParams.get("secret");
+    if (!secret) return createErrorResponse("INVALID_REQUEST", "Secret required", 400);
+
+    const collection = await getCollectionBySecret(env, secret);
+    if (!collection) return createErrorResponse("NOT_FOUND", "Collection not found", 404);
+
+    // Get user for listEntries (dummy user object just for passing to function? No, listEntries uses user.id)
+    // We need to bypass listEntries user check or make a new helper.
+    // listEntries filters by user_id. We know the user_id from the collection.
+    // So we can mock a user object with correct ID.
+    const mockUser = { id: collection.user_id, is_admin: 0 } as User;
+
+    const entries = await listEntries(env, mockUser, undefined, undefined, collection.id);
+    const contents: any[] = [];
+    const baseUrl = new URL(request.url).origin;
+
+    for (const entryMeta of entries) {
+        const entry = await getEntryById(env, entryMeta.id);
+        if (!entry) continue;
+
+        if (entry.blob_value) {
+             contents.push({
+                key: entry.key,
+                type: "file",
+                mime_type: entry.type,
+                url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`
+            });
+        } else {
+            contents.push({
+                key: entry.key,
+                type: "value",
+                value: entry.string_value
+            });
+        }
+    }
+
+    return createJsonResponse({
+        ...collection,
+        contents
+    });
 }
 
 export default { fetch: handleRequest };

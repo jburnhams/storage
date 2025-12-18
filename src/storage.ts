@@ -1,4 +1,4 @@
-import type { Env, KeyValueEntryJoined, User, ValueEntry } from "./types";
+import type { Env, KeyValueEntryJoined, User, ValueEntry, KeyValueCollection, KeyValueCollectionResponse } from "./types";
 
 const MAX_BLOCK_SIZE = 1.8 * 1024 * 1024; // 1.8 MB
 
@@ -11,6 +11,15 @@ async function calculateSecret(content: string | ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest("SHA-1", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Generate random secret for collections
+ */
+function generateRandomSecret(): string {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Array.from(array).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -165,7 +174,8 @@ export async function createEntry(
   type: string,
   stringValue: string | null,
   blobValue: ArrayBuffer | null,
-  filename?: string
+  filename?: string,
+  collectionId?: number | null
 ): Promise<KeyValueEntryJoined> {
   // Validate constraints
   if ((stringValue === null && blobValue === null) || (stringValue !== null && blobValue !== null)) {
@@ -175,13 +185,13 @@ export async function createEntry(
   const valueEntry = await findOrCreateValue(env, stringValue, blobValue, type);
 
   const query = `
-    INSERT INTO key_value_entries (key, value_id, filename, user_id)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO key_value_entries (key, value_id, filename, user_id, collection_id)
+    VALUES (?, ?, ?, ?, ?)
     RETURNING *
   `;
 
   const result = await env.DB.prepare(query)
-    .bind(key, valueEntry.id, filename || null, userId)
+    .bind(key, valueEntry.id, filename || null, userId, collectionId || null)
     .first<any>();
 
   if (!result) {
@@ -234,21 +244,37 @@ export async function updateEntry(
   stringValue: string | null,
   blobValue: ArrayBuffer | null,
   type: string,
-  filename?: string
+  filename?: string,
+  collectionId?: number | null
 ): Promise<KeyValueEntryJoined | null> {
     // Note: updateEntry logic in worker.ts passes null/null if preserving content.
     // If preserving content (stringValue & blobValue both null), we only update key/filename/updated_at.
+
+    let updateFields = "key = ?, filename = ?, updated_at = datetime('now')";
+    const params: any[] = [key, filename || null];
+
+    // Check if we need to update collection_id (undefined means don't update, null means clear, valid number means set)
+    // If logic passes undefined for collectionId, we might want to preserve it.
+    // But currently TS signature has it optional.
+    // Let's assume if collectionId is provided (even null) we update it.
+    // But typically updateEntry is called with all fields.
+    if (collectionId !== undefined) {
+      updateFields += ", collection_id = ?";
+      params.push(collectionId);
+    }
 
     if (stringValue === null && blobValue === null) {
         // Just rename/metadata update
          const query = `
             UPDATE key_value_entries
-            SET key = ?, filename = ?, updated_at = datetime('now')
+            SET ${updateFields}
             WHERE id = ?
             RETURNING *
         `;
+        params.push(id);
+
         const result = await env.DB.prepare(query)
-            .bind(key, filename || null, id)
+            .bind(...params)
             .first<any>();
 
         if (!result) return null;
@@ -264,15 +290,19 @@ export async function updateEntry(
 
     const valueEntry = await findOrCreateValue(env, stringValue, blobValue, type);
 
+    updateFields += ", value_id = ?";
+    params.push(valueEntry.id);
+    params.push(id);
+
     const query = `
         UPDATE key_value_entries
-        SET key = ?, value_id = ?, filename = ?, updated_at = datetime('now')
+        SET ${updateFields}
         WHERE id = ?
         RETURNING *
     `;
 
     const result = await env.DB.prepare(query)
-        .bind(key, valueEntry.id, filename || null, id)
+        .bind(...params)
         .first<any>();
 
     if (!result) return null;
@@ -288,11 +318,13 @@ export async function listEntries(
   env: Env,
   user: User,
   prefix?: string,
-  search?: string
+  search?: string,
+  collectionId?: number | null,
+  includeCollections?: boolean
 ): Promise<KeyValueEntryJoined[]> {
   // We need to join to get type, string_value, secret
   let query = `
-    SELECT k.id, k.key, k.filename, k.user_id, k.created_at, k.updated_at,
+    SELECT k.id, k.key, k.filename, k.user_id, k.created_at, k.updated_at, k.collection_id,
            v.hash as secret, v.type, v.string_value, v.size, v.is_multipart
            -- exclude blob_value for list performance
     FROM key_value_entries k
@@ -305,6 +337,20 @@ export async function listEntries(
   if (!user.is_admin) {
     query += " AND k.user_id = ?";
     params.push(user.id);
+  }
+
+  // Filter by Collection
+  if (collectionId !== undefined && collectionId !== null) {
+      // Explicit collection listing
+      query += " AND k.collection_id = ?";
+      params.push(collectionId);
+  } else if (collectionId === null) {
+      // Root listing
+      // If includeCollections is true, we allow entries with collection_id NOT NULL
+      if (!includeCollections) {
+          query += " AND k.collection_id IS NULL";
+      }
+      // If includeCollections is true, we just don't filter by collection_id (showing all)
   }
 
   if (prefix) {
@@ -333,4 +379,91 @@ export function entryToResponse(entry: KeyValueEntryJoined) {
         ...rest,
         has_blob: entry.string_value === null
     };
+}
+
+// ===== Collection Helpers =====
+
+export async function createCollection(
+  env: Env,
+  userId: number,
+  name: string,
+  description?: string
+): Promise<KeyValueCollection> {
+  const secret = generateRandomSecret();
+  const query = `
+    INSERT INTO key_value_collections (name, description, secret, user_id)
+    VALUES (?, ?, ?, ?)
+    RETURNING *
+  `;
+  const collection = await env.DB.prepare(query)
+    .bind(name, description || null, secret, userId)
+    .first<KeyValueCollection>();
+
+  if (!collection) throw new Error("Failed to create collection");
+  return collection;
+}
+
+export async function getCollection(env: Env, id: number): Promise<KeyValueCollection | null> {
+  return await env.DB.prepare("SELECT * FROM key_value_collections WHERE id = ?").bind(id).first<KeyValueCollection>();
+}
+
+export async function getCollectionBySecret(env: Env, secret: string): Promise<KeyValueCollection | null> {
+    return await env.DB.prepare("SELECT * FROM key_value_collections WHERE secret = ?").bind(secret).first<KeyValueCollection>();
+}
+
+export async function listCollections(env: Env, userId: number): Promise<KeyValueCollectionResponse[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM key_value_collections WHERE user_id = ? ORDER BY created_at DESC"
+  ).bind(userId).all<KeyValueCollection>();
+  return results;
+}
+
+export async function updateCollection(
+  env: Env,
+  id: number,
+  name: string,
+  description?: string
+): Promise<KeyValueCollection | null> {
+  const query = `
+    UPDATE key_value_collections
+    SET name = ?, description = ?, updated_at = datetime('now')
+    WHERE id = ?
+    RETURNING *
+  `;
+  return await env.DB.prepare(query).bind(name, description || null, id).first<KeyValueCollection>();
+}
+
+export async function deleteCollection(env: Env, id: number): Promise<void> {
+    // Cascade is set in SQL but sometimes needs enabling in SQLite.
+    // D1 enables foreign keys by default usually, but good to be safe.
+    await env.DB.prepare("DELETE FROM key_value_collections WHERE id = ?").bind(id).run();
+}
+
+/**
+ * Get entry by key in a specific context (User + Collection)
+ * Used for overwrite logic.
+ */
+export async function getEntryInCollection(
+  env: Env,
+  userId: number,
+  key: string,
+  collectionId: number | null
+): Promise<KeyValueEntryJoined | null> {
+    let query = `
+        SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type, v.is_multipart, v.size
+        FROM key_value_entries k
+        JOIN value_entries v ON k.value_id = v.id
+        WHERE k.user_id = ? AND k.key = ?
+    `;
+    const params: any[] = [userId, key];
+
+    if (collectionId === null) {
+        query += " AND k.collection_id IS NULL";
+    } else {
+        query += " AND k.collection_id = ?";
+        params.push(collectionId);
+    }
+
+    const entry = await env.DB.prepare(query).bind(...params).first<KeyValueEntryJoined>();
+    return entry;
 }
