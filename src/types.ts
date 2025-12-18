@@ -19,6 +19,16 @@ export interface Session {
   last_used_at: string;
 }
 
+export interface KeyValueCollection {
+  id: number;
+  name: string;
+  description: string | null;
+  secret: string;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ValueEntry {
     id: number;
     hash: string;
@@ -36,6 +46,7 @@ export interface KeyValueEntry {
   value_id: number;
   filename: string | null;
   user_id: number;
+  collection_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +88,16 @@ export interface ErrorResponse {
   message: string;
 }
 
+export interface KeyValueCollectionResponse {
+  id: number;
+  name: string;
+  description: string | null;
+  secret: string;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface KeyValueEntryResponse {
   id: number;
   key: string;
@@ -86,6 +107,7 @@ export interface KeyValueEntryResponse {
   type: string;
   filename: string | null;
   user_id: number;
+  collection_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -97,6 +119,7 @@ export interface CreateEntryRequest {
   value: string; // If type implies blob (e.g. multipart upload), this might be handled differently
   type: string;
   filename?: string;
+  collection_id?: number | null;
   // For JSON API usage, we might accept base64 for blobs or rely on multipart/form-data
 }
 

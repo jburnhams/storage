@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { App } from "../../src/App";
@@ -9,19 +9,29 @@ describe("App", () => {
     global.fetch = vi.fn();
   });
 
-  it("shows loading state initially", () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: false,
-        json: async () => ({}),
-      })
-    ) as any;
+  it("shows loading state initially", async () => {
+    // We need to delay the promise resolution to catch the loading state
+    // or just ensure we await `act` properly.
+    // Actually, "loading" is initial state.
+    // If fetch resolves immediately, it might switch state too fast.
+    // But here we mock fetch.
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
+    global.fetch = vi.fn(() => new Promise((resolve) => {
+        // Resolve later
+        setTimeout(() => resolve({
+            ok: false,
+            json: async () => ({})
+        } as any), 100);
+    }));
+
+    await act(async () => {
+        render(
+          <MemoryRouter>
+            <App />
+          </MemoryRouter>
+        );
+    });
+
     expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
@@ -33,11 +43,13 @@ describe("App", () => {
       })
     ) as any;
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
+    await act(async () => {
+        render(
+          <MemoryRouter>
+            <App />
+          </MemoryRouter>
+        );
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Sign in with Google")).toBeInTheDocument();
@@ -56,18 +68,48 @@ describe("App", () => {
       last_login_at: "2025-12-16T00:00:00Z",
     };
 
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => mockUser,
-      })
-    ) as any;
+    const mockSession = {
+      id: "session123",
+      user_id: 1,
+      created_at: new Date().toISOString(),
+      expires_at: new Date().toISOString(),
+      last_used_at: new Date().toISOString(),
+    };
 
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
+    // Need to mock fetch calls made by dashboard too if any?
+    // UserDashboard likely fetches stats or entries.
+    // We should mock them to avoid warnings or errors.
+
+    global.fetch = vi.fn((url: string | URL | Request) => {
+        const urlStr = url.toString();
+        if (urlStr.includes("/api/user")) {
+            return Promise.resolve({
+                ok: true,
+                json: async () => mockUser,
+            });
+        }
+        if (urlStr.includes("/api/session")) {
+             return Promise.resolve({
+                ok: true,
+                json: async () => mockSession,
+            });
+        }
+        if (urlStr.includes("/api/storage/entries") || urlStr.includes("/api/collections")) {
+             return Promise.resolve({
+                ok: true,
+                json: async () => [],
+            });
+        }
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+    }) as any;
+
+    await act(async () => {
+        render(
+          <MemoryRouter>
+            <App />
+          </MemoryRouter>
+        );
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Storage Auth Service")).toBeInTheDocument();
