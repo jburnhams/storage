@@ -6,6 +6,7 @@ import { join } from "path";
 import {
   createMiniflareInstance,
   cleanDatabase,
+  seedTestData,
 } from "./setup";
 
 /**
@@ -56,10 +57,7 @@ describe("Multipart Upload Integration Tests", () => {
   beforeEach(async () => {
     db = await mf.getD1Database("DB");
     await cleanDatabase(db);
-    // Seed user
-    await db.prepare("INSERT INTO users (id, email, name, is_admin) VALUES (1, 'test@test.com', 'Test User', 1)").run();
-    // Seed session
-    await db.prepare("INSERT INTO sessions (id, user_id, expires_at, last_used_at) VALUES ('session-1', 1, datetime('now', '+1 hour'), datetime('now'))").run();
+    await seedTestData(db);
   });
 
   afterAll(async () => {
@@ -74,13 +72,14 @@ describe("Multipart Upload Integration Tests", () => {
 
   // Skipped due to instability in Miniflare/Undici handling of multipart requests in the test environment.
   // The core logic is verified in unit tests (tests/unit/multipart.test.ts).
-  it.skip("should upload and retrieve a SMALL file", async () => {
+  it("should upload and retrieve a SMALL file", async () => {
     const size = 1024; // 1KB
     const smallData = new Uint8Array(size);
     for(let i=0; i<size; i++) smallData[i] = i % 256;
 
     const formData = new FormData();
     formData.append("key", "small_file.bin");
+    formData.append("type", "application/octet-stream");
     const blob = new Blob([smallData], { type: "application/octet-stream" });
     formData.append("file", blob, "small_file.bin");
 
@@ -92,7 +91,7 @@ describe("Multipart Upload Integration Tests", () => {
     const response = await mf.dispatchFetch("http://localhost/api/storage/entry", {
       method: "POST",
       headers: {
-        "Cookie": "storage_session=session-1",
+        "Cookie": "storage_session=test-session-admin",
         "Content-Type": contentType!,
       },
       body: bodyBuffer
@@ -107,7 +106,7 @@ describe("Multipart Upload Integration Tests", () => {
   });
 
   // Skipped due to instability in Miniflare/Undici handling of multipart requests in the test environment.
-  it.skip("should upload and retrieve a LARGE file (> 2MB)", async () => {
+  it("should upload and retrieve a LARGE file (> 2MB)", async () => {
     // 2.5MB file
     const size = 2.5 * 1024 * 1024;
     const largeData = new Uint8Array(size);
@@ -115,6 +114,7 @@ describe("Multipart Upload Integration Tests", () => {
 
     const formData = new FormData();
     formData.append("key", "large_file.bin");
+    formData.append("type", "application/octet-stream");
 
     // Create a Blob for the file
     const blob = new Blob([largeData], { type: "application/octet-stream" });
@@ -134,7 +134,7 @@ describe("Multipart Upload Integration Tests", () => {
     const response = await mf.dispatchFetch("http://localhost/api/storage/entry", {
       method: "POST",
       headers: {
-        "Cookie": "storage_session=session-1",
+        "Cookie": "storage_session=test-session-admin",
         "Content-Type": contentType,
       },
       body: bodyBuffer
@@ -150,7 +150,7 @@ describe("Multipart Upload Integration Tests", () => {
     // Retrieve via API
     const getResponse = await mf.dispatchFetch(`http://localhost/api/storage/entry/${result.id}`, {
         headers: {
-            "Cookie": "storage_session=session-1",
+            "Cookie": "storage_session=test-session-admin",
         }
     });
 
