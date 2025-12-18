@@ -538,13 +538,12 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
   try {
     const formData = await request.formData();
     const key = formData.get("key") as string;
-    // Default type if missing (e.g. from tests)
-    const type = (formData.get("type") as string) || "application/octet-stream";
+    const type = formData.get("type") as string;
     const stringValue = formData.get("string_value") as string | null;
     const file = formData.get("file") as File | null;
 
-    if (!key) {
-      return createErrorResponse("INVALID_REQUEST", "Key is required", 400);
+    if (!key || !type) {
+      return createErrorResponse("INVALID_REQUEST", "Key and Type are required", 400);
     }
 
     let blobValue: ArrayBuffer | null = null;

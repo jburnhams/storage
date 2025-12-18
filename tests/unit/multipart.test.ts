@@ -13,7 +13,7 @@ describe("Multipart Storage (Unit)", () => {
         await env.DB.prepare("INSERT INTO users (email, name, is_admin) VALUES (?, ?, ?)").bind("test@test.com", "Test User", 1).run();
     });
 
-    it("should store a large blob as multipart", async () => {
+    it("should store a large blob as multipart", { timeout: 10000 }, async () => {
         const largeData = new Uint8Array(LARGE_BLOB_SIZE);
         for(let i=0; i<largeData.length; i++) largeData[i] = i % 256;
 

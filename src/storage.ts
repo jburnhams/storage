@@ -40,28 +40,24 @@ async function reassembleBlob(env: Env, valueId: number): Promise<ArrayBuffer | 
 
   if (!results || results.length === 0) return null;
 
+  // Normalize chunks to Uint8Array first to calculate total size accurately
+  const normalizedChunks: Uint8Array[] = results.map(row => {
+      const rowData = row.data as any;
+      if (Array.isArray(rowData)) {
+          return new Uint8Array(rowData);
+      } else if (rowData instanceof ArrayBuffer) {
+          return new Uint8Array(rowData);
+      } else {
+          return new Uint8Array(rowData);
+      }
+  });
+
   // Calculate total size
-  const totalSize = results.reduce((acc, row) => acc + (row.data as ArrayBuffer).byteLength, 0);
+  const totalSize = normalizedChunks.reduce((acc, chunk) => acc + chunk.length, 0);
   const combined = new Uint8Array(totalSize);
 
   let offset = 0;
-  for (const row of results) {
-    // D1 might return byte array as standard JS Array in some environments (like miniflare maybe?) or Uint8Array.
-    // But in Workers it's usually ArrayBuffer or Array.
-    // Ensure we handle it correctly.
-    const rowData = row.data as any;
-    // If it's an array (numeric), convert.
-    let chunk: Uint8Array;
-    if (Array.isArray(rowData)) {
-        chunk = new Uint8Array(rowData);
-    } else if (rowData instanceof ArrayBuffer) {
-        chunk = new Uint8Array(rowData);
-    } else {
-        // Fallback for miniflare D1 returning Uint8Array directly sometimes?
-        // Or if it is already a typed array (like Uint8Array from cloudflare:test)
-        chunk = new Uint8Array(rowData);
-    }
-
+  for (const chunk of normalizedChunks) {
     combined.set(chunk, offset);
     offset += chunk.length;
   }
