@@ -550,16 +550,24 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
     let filename: string | undefined = undefined;
 
     if (file) {
-       if (typeof file.arrayBuffer === 'function') {
+       if (typeof file === "string") {
+           // Workaround for Miniflare/workerd integration tests where files are parsed as strings
+           // The string seems to be a Latin-1 representation of the bytes
+           const str = file as string;
+           const buf = new Uint8Array(str.length);
+           for (let i = 0; i < str.length; i++) {
+               buf[i] = str.charCodeAt(i);
+           }
+           blobValue = buf.buffer;
+           filename = undefined; // Name is lost when parsing as string
+       } else if (typeof file.arrayBuffer === 'function') {
            blobValue = await file.arrayBuffer();
+           filename = file.name;
        } else {
-           // Fallback if it's treated as string or other object?
-           // Sometimes Miniflare/workerd passes strings for files if not parsed correctly?
-           // Or if it is a File object but missing methods in test env.
-           // Try Response
+           // Fallback
            blobValue = await new Response(file).arrayBuffer();
+           filename = file.name;
        }
-       filename = file.name;
     }
 
     // Treat empty string as valid content if explicit (FormData sends "" for empty inputs usually)
@@ -636,12 +644,22 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
 
     // If file provided -> New Content (Blob)
     if (file) {
-       if (typeof file.arrayBuffer === 'function') {
+       if (typeof file === "string") {
+           // Workaround for Miniflare/workerd integration tests where files are parsed as strings
+           const str = file as string;
+           const buf = new Uint8Array(str.length);
+           for (let i = 0; i < str.length; i++) {
+               buf[i] = str.charCodeAt(i);
+           }
+           blobValue = buf.buffer;
+           filename = undefined;
+       } else if (typeof file.arrayBuffer === 'function') {
            blobValue = await file.arrayBuffer();
+           filename = file.name;
        } else {
            blobValue = await new Response(file).arrayBuffer();
+           filename = file.name;
        }
-       filename = file.name;
        finalStringValue = null;
     } else {
         // No file.
