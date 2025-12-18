@@ -550,7 +550,15 @@ async function handleCreateEntry(request: Request, env: Env): Promise<Response> 
     let filename: string | undefined = undefined;
 
     if (file) {
-       blobValue = await file.arrayBuffer();
+       if (typeof file.arrayBuffer === 'function') {
+           blobValue = await file.arrayBuffer();
+       } else {
+           // Fallback if it's treated as string or other object?
+           // Sometimes Miniflare/workerd passes strings for files if not parsed correctly?
+           // Or if it is a File object but missing methods in test env.
+           // Try Response
+           blobValue = await new Response(file).arrayBuffer();
+       }
        filename = file.name;
     }
 
@@ -628,7 +636,11 @@ async function handleUpdateEntry(request: Request, env: Env, idStr: string): Pro
 
     // If file provided -> New Content (Blob)
     if (file) {
-       blobValue = await file.arrayBuffer();
+       if (typeof file.arrayBuffer === 'function') {
+           blobValue = await file.arrayBuffer();
+       } else {
+           blobValue = await new Response(file).arrayBuffer();
+       }
        filename = file.name;
        finalStringValue = null;
     } else {
