@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 # Integration test temporary state
 temp_test_state/
 tests/integration/temp_state/
+
+# Generated frontend assets
+src/frontend/assets.ts
