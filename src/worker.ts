@@ -457,6 +457,17 @@ export async function handleRequest(
   }
 
   // Storage routes
+  // Bulk operations
+  if (url.pathname === "/api/storage/bulk/download") {
+    if (request.method === "POST") return handleBulkDownload(request, env);
+  }
+  if (url.pathname === "/api/storage/bulk/export") {
+    if (request.method === "POST") return handleBulkExport(request, env);
+  }
+  if (url.pathname === "/api/storage/bulk/delete") {
+      if (request.method === "POST") return handleBulkDelete(request, env);
+  }
+
   if (url.pathname.startsWith("/api/storage/entry")) {
     const parts = url.pathname.split("/");
     const id = parts[4]; // /api/storage/entry/:id
@@ -1052,6 +1063,125 @@ async function handlePublicCollection(request: Request, env: Env): Promise<Respo
         ...collection,
         contents
     });
+}
+
+// ===== Bulk Operations =====
+
+async function handleBulkDownload(request: Request, env: Env): Promise<Response> {
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    try {
+        const body = await request.json() as any;
+        const entryIds = body.entry_ids as number[];
+
+        if (!entryIds || !Array.isArray(entryIds)) {
+            return createErrorResponse("INVALID_REQUEST", "entry_ids array required", 400);
+        }
+
+        const zip = new JSZip();
+        const values: Record<string, string> = {};
+
+        // Limit bulk size? D1 limits?
+        // We fetch one by one for security check (user_id ownership)
+        // Optimization: fetch all by IDs and filter by user_id
+        for (const id of entryIds) {
+             const entry = await getEntryById(env, id);
+             if (!entry) continue;
+             if (entry.user_id !== user.id && !user.is_admin) continue;
+
+             if (entry.blob_value) {
+                zip.file(entry.key, entry.blob_value as any);
+            } else if (entry.string_value !== null) {
+                values[entry.key] = entry.string_value;
+            }
+        }
+
+        if (Object.keys(values).length > 0) {
+            zip.file("values.json", JSON.stringify(values, null, 2));
+        }
+
+        const content = await zip.generateAsync({ type: "blob" });
+        return new Response(content as any, {
+            headers: {
+                "Content-Type": "application/zip",
+                "Content-Disposition": `attachment; filename="download.zip"`
+            }
+        });
+
+    } catch (e) {
+        return createErrorResponse("SERVER_ERROR", String(e), 500);
+    }
+}
+
+async function handleBulkExport(request: Request, env: Env): Promise<Response> {
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    try {
+        const body = await request.json() as any;
+        const entryIds = body.entry_ids as number[];
+
+        if (!entryIds || !Array.isArray(entryIds)) {
+            return createErrorResponse("INVALID_REQUEST", "entry_ids array required", 400);
+        }
+
+        const contents: any[] = [];
+        const baseUrl = new URL(request.url).origin;
+
+        for (const id of entryIds) {
+             const entry = await getEntryById(env, id);
+             if (!entry) continue;
+             if (entry.user_id !== user.id && !user.is_admin) continue;
+
+             if (entry.blob_value) {
+                contents.push({
+                    key: entry.key,
+                    type: "file",
+                    mime_type: entry.type,
+                    url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`
+                });
+            } else {
+                contents.push({
+                    key: entry.key,
+                    type: "value",
+                    value: entry.string_value
+                });
+            }
+        }
+
+        return createJsonResponse({ contents });
+
+    } catch (e) {
+        return createErrorResponse("SERVER_ERROR", String(e), 500);
+    }
+}
+
+async function handleBulkDelete(request: Request, env: Env): Promise<Response> {
+    const user = await getCurrentUser(request, env);
+    if (!user) return createErrorResponse("UNAUTHORIZED", "Not authenticated", 401);
+
+    try {
+        const body = await request.json() as any;
+        const entryIds = body.entry_ids as number[];
+
+        if (!entryIds || !Array.isArray(entryIds)) {
+            return createErrorResponse("INVALID_REQUEST", "entry_ids array required", 400);
+        }
+
+        for (const id of entryIds) {
+             const entry = await getEntryById(env, id);
+             if (!entry) continue;
+             if (entry.user_id !== user.id && !user.is_admin) continue;
+
+             await deleteEntry(env, id);
+        }
+
+        return createJsonResponse({ success: true });
+
+    } catch (e) {
+        return createErrorResponse("SERVER_ERROR", String(e), 500);
+    }
 }
 
 export default { fetch: handleRequest };

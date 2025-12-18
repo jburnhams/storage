@@ -10,45 +10,57 @@ interface KeyValueEntryResponse {
   type: string;
   filename: string | null;
   user_id: number;
+  collection_id: number | null;
   created_at: string;
   updated_at: string;
 }
 
-interface Props {
-    user: UserResponse;
+interface Collection {
+    id: number;
+    name: string;
+    description: string | null;
+    secret: string;
+    created_at: string;
+    updated_at: string;
 }
 
-export function StorageExplorer({ user }: Props) {
+interface Props {
+    user: UserResponse;
+    collection?: Collection | null;
+}
+
+export function StorageExplorer({ user, collection }: Props) {
     const [entries, setEntries] = useState<KeyValueEntryResponse[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPrefix, setSelectedPrefix] = useState<string>("");
     const [search, setSearch] = useState("");
     const [searchInFolder, setSearchInFolder] = useState(false);
+    const [includeCollections, setIncludeCollections] = useState(false);
+
+    // Multi-select
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
     // For Create/Edit Modal
     const [editingEntry, setEditingEntry] = useState<KeyValueEntryResponse | null>(null); // Null = creating new
     const [isModalOpen, setIsModalOpen] = useState(false);
 
+    // For Zip Upload Modal (Collection Mode)
+    const [isUploadZipOpen, setIsUploadZipOpen] = useState(false);
+
     const fetchEntries = () => {
         setLoading(true);
-        // We fetch all or fetch by prefix?
-        // For the tree to work, we kind of need all keys to build the structure, or we lazy load.
-        // Given D1 is fast and we might not have millions of files yet, fetching all keys (metadata) is okay.
-        // The API supports listing all.
+        let url = "/api/storage/entries?";
+        const params = new URLSearchParams();
 
-        // However, if we want to filter by search immediately:
-        // Ideally we fetch all to build the client-side tree, and filter client-side for smoother UX,
-        // unless the dataset is huge.
-        // Let's fetch all (filtered by user access on backend).
+        if (collection) {
+            params.set("collection_id", collection.id.toString());
+        } else {
+             if (includeCollections) {
+                 params.set("include_collections", "true");
+             }
+        }
 
-        let url = "/api/storage/entries";
-        // If we were using server-side filtering only:
-        // const params = new URLSearchParams();
-        // if (selectedPrefix) params.set("prefix", selectedPrefix);
-        // if (search) params.set("search", search);
-        // url += "?" + params.toString();
-
-        fetch(url)
+        fetch(url + params.toString())
             .then(async res => {
                 if (!res.ok) {
                     throw new Error(`Failed to fetch: ${res.status}`);
@@ -63,17 +75,17 @@ export function StorageExplorer({ user }: Props) {
                     setEntries([]);
                 }
                 setLoading(false);
+                setSelectedIds(new Set()); // Reset selection
             })
             .catch(err => {
                 console.error(err);
                 setLoading(false);
-                // Optionally handle error state
             });
     };
 
     useEffect(() => {
         fetchEntries();
-    }, []);
+    }, [collection, includeCollections]);
 
     // Build Tree Structure
     const tree = useMemo(() => {
@@ -108,11 +120,6 @@ export function StorageExplorer({ user }: Props) {
     const filteredEntries = useMemo(() => {
         let result = entries;
 
-        // 1. Filter by Folder (Prefix) if selected
-        // If selectedPrefix is "", show everything? Or show root files?
-        // Usually explorer shows content of selected folder.
-        // If nothing selected, show root.
-
         if (!search) {
              // Browser Mode
              if (selectedPrefix) {
@@ -137,24 +144,117 @@ export function StorageExplorer({ user }: Props) {
         return result;
     }, [entries, selectedPrefix, search, searchInFolder]);
 
-    const handleDelete = async (id: number) => {
-        if (!confirm("Are you sure?")) return;
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            const ids = new Set(filteredEntries.map(e => e.id));
+            setSelectedIds(ids);
+        } else {
+            setSelectedIds(new Set());
+        }
+    };
+
+    const handleSelect = (id: number, checked: boolean) => {
+        const newSet = new Set(selectedIds);
+        if (checked) newSet.add(id);
+        else newSet.delete(id);
+        setSelectedIds(newSet);
+    };
+
+    const handleDelete = async (ids: number[]) => {
+        if (!confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
+
+        if (ids.length === 1) {
+            try {
+                const res = await fetch(`/api/storage/entry/${ids[0]}`, { method: "DELETE" });
+                if (res.ok) fetchEntries();
+                else alert("Failed to delete");
+            } catch (e) { console.error(e); }
+        } else {
+            // Bulk Delete
+             try {
+                const res = await fetch(`/api/storage/bulk/delete`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ entry_ids: ids })
+                });
+                if (res.ok) fetchEntries();
+                else alert("Failed to delete");
+            } catch (e) { console.error(e); }
+        }
+    };
+
+    const handleBulkDownload = async () => {
+        if (selectedIds.size === 0) return;
+        const ids = Array.from(selectedIds);
+
+        // Use download endpoint (window.open with form post is tricky, fetch blob is better)
         try {
-            const res = await fetch(`/api/storage/entry/${id}`, { method: "DELETE" });
-            if (res.ok) {
-                fetchEntries();
-            } else {
-                alert("Failed to delete");
-            }
+            const res = await fetch("/api/storage/bulk/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ entry_ids: ids })
+            });
+            if (!res.ok) throw new Error("Download failed");
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "download.zip";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         } catch (e) {
+            alert("Error downloading zip");
             console.error(e);
         }
     };
 
+    const handleBulkExport = async () => {
+         if (selectedIds.size === 0) return;
+        const ids = Array.from(selectedIds);
+
+        try {
+            const res = await fetch("/api/storage/bulk/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ entry_ids: ids })
+            });
+            if (!res.ok) throw new Error("Export failed");
+
+            const data = await res.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const url = window.URL.createObjectURL(blob);
+             const a = document.createElement("a");
+            a.href = url;
+            a.download = "export.json";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+             alert("Error exporting json");
+            console.error(e);
+        }
+    }
+
     return (
         <div className="storage-explorer">
             <div className="sidebar">
-                <h3>Explorer</h3>
+                <h3>{collection ? collection.name : "Explorer"}</h3>
+                {!collection && (
+                    <div className="toggle-wrapper" style={{marginBottom: '10px'}}>
+                         <label>
+                            <input
+                                type="checkbox"
+                                checked={includeCollections}
+                                onChange={e => setIncludeCollections(e.target.checked)}
+                            />
+                            Show collection files
+                         </label>
+                    </div>
+                )}
                 <div className="tree-view">
                     <div
                         className={`tree-item ${selectedPrefix === "" ? "active" : ""}`}
@@ -171,11 +271,27 @@ export function StorageExplorer({ user }: Props) {
             </div>
 
             <div className="main-content">
-                <div className="toolbar">
+                <div className="toolbar" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <button onClick={() => { setEditingEntry(null); setIsModalOpen(true); }}>
                         + New Entry
                     </button>
-                    <div className="search-box">
+                    {collection && (
+                        <>
+                             <button onClick={() => setIsUploadZipOpen(true)}>Upload ZIP</button>
+                             {/* Collection specific full download/export already in CollectionsManager, but could add here too if needed */}
+                        </>
+                    )}
+
+                    {selectedIds.size > 0 && (
+                        <>
+                            <span style={{marginLeft: 'auto'}}>Selected: {selectedIds.size}</span>
+                            <button onClick={handleBulkDownload}>Download ZIP</button>
+                            <button onClick={handleBulkExport}>Export JSON</button>
+                            <button onClick={() => handleDelete(Array.from(selectedIds))} style={{backgroundColor: '#e74c3c'}}>Delete</button>
+                        </>
+                    )}
+
+                    <div className="search-box" style={{ marginLeft: selectedIds.size === 0 ? 'auto' : '10px' }}>
                         <input
                             type="text"
                             placeholder="Search..."
@@ -188,7 +304,7 @@ export function StorageExplorer({ user }: Props) {
                                 checked={searchInFolder}
                                 onChange={(e) => setSearchInFolder(e.target.checked)}
                             />
-                            Within current folder
+                            Folder
                         </label>
                     </div>
                 </div>
@@ -198,7 +314,15 @@ export function StorageExplorer({ user }: Props) {
                         <table>
                             <thead>
                                 <tr>
+                                    <th style={{width: '30px'}}>
+                                        <input
+                                            type="checkbox"
+                                            checked={filteredEntries.length > 0 && filteredEntries.every(e => selectedIds.has(e.id))}
+                                            onChange={e => handleSelectAll(e.target.checked)}
+                                        />
+                                    </th>
                                     <th>Key/Name</th>
+                                    {!collection && includeCollections && <th>Col ID</th>}
                                     <th>Type</th>
                                     <th>Modified</th>
                                     <th>Actions</th>
@@ -206,18 +330,25 @@ export function StorageExplorer({ user }: Props) {
                             </thead>
                             <tbody>
                                 {filteredEntries.map(entry => (
-                                    <tr key={entry.id}>
+                                    <tr key={entry.id} className={selectedIds.has(entry.id) ? "selected" : ""}>
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.has(entry.id)}
+                                                onChange={e => handleSelect(entry.id, e.target.checked)}
+                                            />
+                                        </td>
                                         <td title={entry.key}>
-                                            {/* Show relative name if in folder view */}
                                             {search ? entry.key : entry.key.split("/").pop()}
                                         </td>
+                                        {!collection && includeCollections && <td>{entry.collection_id || "-"}</td>}
                                         <td>{entry.type}</td>
                                         <td>{new Date(entry.updated_at).toLocaleString()}</td>
                                         <td>
                                             <button onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }}>Edit</button>
-                                            <button onClick={() => handleDelete(entry.id)}>Delete</button>
+                                            <button onClick={() => handleDelete([entry.id])}>Delete</button>
                                             <button onClick={() => {
-                                                const link = `${window.location.origin}/share/${entry.key}?secret=${entry.secret}`;
+                                                const link = `${window.location.origin}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.secret}`;
                                                 navigator.clipboard.writeText(link);
                                                 alert("Link copied!");
                                             }}>Share</button>
@@ -225,7 +356,7 @@ export function StorageExplorer({ user }: Props) {
                                     </tr>
                                 ))}
                                 {filteredEntries.length === 0 && (
-                                    <tr><td colSpan={4}>No entries found</td></tr>
+                                    <tr><td colSpan={includeCollections && !collection ? 6 : 5}>No entries found</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -236,9 +367,18 @@ export function StorageExplorer({ user }: Props) {
             {isModalOpen && (
                 <EntryModal
                     entry={editingEntry}
+                    collectionId={collection?.id}
                     onClose={() => setIsModalOpen(false)}
                     onSave={() => { setIsModalOpen(false); fetchEntries(); }}
                     currentPath={selectedPrefix}
+                />
+            )}
+
+            {isUploadZipOpen && collection && (
+                 <UploadZipModal
+                    collectionId={collection.id}
+                    onClose={() => setIsUploadZipOpen(false)}
+                    onComplete={() => { setIsUploadZipOpen(false); fetchEntries(); }}
                 />
             )}
         </div>
@@ -266,7 +406,7 @@ function FolderTree({ node, selectedPath, onSelect }: any) {
     );
 }
 
-function EntryModal({ entry, onClose, onSave, currentPath }: any) {
+function EntryModal({ entry, onClose, onSave, currentPath, collectionId }: any) {
     const [key, setKey] = useState(entry ? entry.key : (currentPath ? `${currentPath}/` : ""));
     const [type, setType] = useState(entry ? entry.type : "text/plain");
     const [stringValue, setStringValue] = useState(entry ? entry.string_value || "" : "");
@@ -293,6 +433,10 @@ function EntryModal({ entry, onClose, onSave, currentPath }: any) {
         formData.append("type", type);
         // Rename support: send key even for updates
         formData.append("key", key);
+
+        if (collectionId) {
+            formData.append("collection_id", collectionId.toString());
+        }
 
         if (entry) {
             // Update
@@ -391,6 +535,52 @@ function EntryModal({ entry, onClose, onSave, currentPath }: any) {
                     <div className="actions">
                         <button type="button" onClick={onClose} disabled={submitting}>Cancel</button>
                         <button type="submit" disabled={submitting}>Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function UploadZipModal({ collectionId, onClose, onComplete }: any) {
+    const [file, setFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
+
+    const handleUpload = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!file) return;
+
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch(`/api/collections/${collectionId}/upload`, {
+                method: "POST",
+                body: formData
+            });
+            if (!res.ok) throw new Error("Upload failed");
+            onComplete();
+        } catch (e) {
+            alert("Error uploading zip");
+            setUploading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal">
+                <h2>Upload ZIP to Collection</h2>
+                <form onSubmit={handleUpload}>
+                    <div className="form-group">
+                        <label>Select ZIP File</label>
+                        <input type="file" accept=".zip" onChange={e => setFile(e.target.files?.[0] || null)} required />
+                    </div>
+                    <div className="actions">
+                        <button type="button" onClick={onClose} disabled={uploading}>Cancel</button>
+                        <button type="submit" disabled={uploading || !file}>
+                            {uploading ? "Uploading..." : "Upload"}
+                        </button>
                     </div>
                 </form>
             </div>

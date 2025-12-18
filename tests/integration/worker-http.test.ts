@@ -24,9 +24,16 @@ async function bundleWorker(): Promise<string> {
     entryPoints: [join(process.cwd(), "src", "worker.ts")],
     bundle: true,
     format: "esm",
-    platform: "neutral",
+    platform: "browser", // Changed from neutral to browser
     outfile: join(outdir, "worker.js"),
+    mainFields: ["browser", "module", "main"], // Added mainFields
     external: ["cloudflare:*"],
+    alias: {
+        "buffer": "buffer", // Added alias for jszip compat
+    },
+    define: {
+        "process.env.NODE_ENV": '"test"'
+    }
   });
 
   return readFileSync(join(outdir, "worker.js"), "utf-8");
@@ -67,10 +74,10 @@ describe("Worker HTTP Integration Tests", () => {
   });
 
   afterAll(async () => {
-    await mf.dispose();
+    if (mf) await mf.dispose();
     try {
       const { rmSync } = await import("fs");
-      rmSync(persistPath, { recursive: true, force: true });
+      if (persistPath) rmSync(persistPath, { recursive: true, force: true });
     } catch (e) {
       console.error("Failed to clean up D1 persistence:", e);
     }
