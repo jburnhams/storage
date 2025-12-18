@@ -6,11 +6,13 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { BuildTimestampBadge } from "./components/BuildTimestampBadge";
 import { StorageExplorer } from "./components/StorageExplorer";
 import { PublicShareView } from "./components/PublicShareView";
+import { CollectionsManager } from "./components/CollectionsManager";
 import type { UserResponse } from "./types";
 
 export function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "collections">("dashboard");
   const location = useLocation();
 
   useEffect(() => {
@@ -87,14 +89,23 @@ export function App() {
 
       {/* Navigation or Tabs? */}
 
+      <div className="tabs" style={{ marginBottom: "1rem" }}>
+          <button onClick={() => setActiveTab("dashboard")} disabled={activeTab === "dashboard"}>Explorer</button>
+          <button onClick={() => setActiveTab("collections")} disabled={activeTab === "collections"}>Collections</button>
+      </div>
+
       <Routes>
         <Route path="/" element={
-            <>
-                <UserDashboard user={user} />
-                {user.is_admin && <AdminDashboard />}
-                <hr />
-                <StorageExplorer user={user} />
-            </>
+            activeTab === "dashboard" ? (
+                <>
+                    <UserDashboard user={user} />
+                    {user.is_admin && <AdminDashboard />}
+                    <hr />
+                    <StorageExplorer user={user} />
+                </>
+            ) : (
+                <CollectionsManager user={user} />
+            )
         } />
       </Routes>
 
