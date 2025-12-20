@@ -63,6 +63,58 @@ export interface ExecutionContext {
   passThroughOnException?: () => void;
 }
 
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname;
+    return (
+      hostname === "jonathanburnhams.com" ||
+      hostname.endsWith(".jonathanburnhams.com") ||
+      hostname === "jburnhams.workers.dev" ||
+      hostname.endsWith(".jburnhams.workers.dev") ||
+      hostname === "localhost" ||
+      hostname.startsWith("127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function addCorsHeaders(response: Response, request: Request): Response {
+  const origin = request.headers.get("Origin");
+  if (!origin || !isAllowedOrigin(origin)) {
+    return response;
+  }
+
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set("Access-Control-Allow-Origin", origin);
+  newHeaders.set("Access-Control-Allow-Credentials", "true");
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
+function handleOptions(request: Request): Response {
+  const origin = request.headers.get("Origin");
+  if (!origin || !isAllowedOrigin(origin)) {
+    return new Response(null, { status: 204 });
+  }
+
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
+}
+
 function createErrorResponse(
   error: string,
   message: string,
@@ -239,8 +291,10 @@ async function handleCallback(
                 const hostname = url.hostname;
                 // Allow our domains and localhost
                 if (
-                    hostname.endsWith("jonathanburnhams.com") ||
-                    hostname.endsWith("jburnhams.workers.dev") ||
+                    hostname === "jonathanburnhams.com" ||
+                    hostname.endsWith(".jonathanburnhams.com") ||
+                    hostname === "jburnhams.workers.dev" ||
+                    hostname.endsWith(".jburnhams.workers.dev") ||
                     hostname === "localhost" ||
                     hostname.startsWith("127.0.0.1")
                 ) {
@@ -455,134 +509,141 @@ export async function handleRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
 
+  // Handle CORS preflight requests
+  if (request.method === "OPTIONS") {
+    return handleOptions(request);
+  }
+
   // Cleanup expired sessions in background
   ctx.waitUntil(deleteExpiredSessions(env));
 
+  let response: Response;
+
   // Frontend
   if (url.pathname === "/" || url.pathname === "/index.html") {
-    return renderFrontend();
+    response = renderFrontend();
   }
-
   // Auth routes
-  if (url.pathname === "/auth/login") {
-    return handleLogin(request, env);
+  else if (url.pathname === "/auth/login") {
+    response = await handleLogin(request, env);
   }
-
-  if (url.pathname === "/auth/callback") {
-    return handleCallback(request, env);
+  else if (url.pathname === "/auth/callback") {
+    response = await handleCallback(request, env);
   }
-
-  if (url.pathname === "/auth/logout") {
-    return handleLogout(request, env);
+  else if (url.pathname === "/auth/logout") {
+    response = await handleLogout(request, env);
   }
-
   // API routes
-  if (url.pathname === "/api/session") {
-    return handleGetSession(request, env);
+  else if (url.pathname === "/api/session") {
+    response = await handleGetSession(request, env);
   }
-
-  if (url.pathname === "/api/user") {
-    return handleGetUser(request, env);
+  else if (url.pathname === "/api/user") {
+    response = await handleGetUser(request, env);
   }
-
-  if (url.pathname === "/api/users") {
-    return handleGetAllUsers(request, env);
+  else if (url.pathname === "/api/users") {
+    response = await handleGetAllUsers(request, env);
   }
-
-  if (url.pathname === "/api/sessions") {
-    return handleGetAllSessions(request, env);
+  else if (url.pathname === "/api/sessions") {
+    response = await handleGetAllSessions(request, env);
   }
-
-  if (url.pathname === "/api/admin/promote") {
-    return handlePromoteAdmin(request, env);
+  else if (url.pathname === "/api/admin/promote") {
+    response = await handlePromoteAdmin(request, env);
   }
-
   // Collection Routes
-  if (url.pathname.startsWith("/api/collections")) {
+  else if (url.pathname.startsWith("/api/collections")) {
       const parts = url.pathname.split("/");
       // /api/collections (length 3)
       // /api/collections/:id (length 4)
       // /api/collections/:id/upload (length 5)
 
       if (parts.length === 3) {
-          if (request.method === "GET") return handleListCollections(request, env);
-          if (request.method === "POST") return handleCreateCollection(request, env);
+          if (request.method === "GET") response = await handleListCollections(request, env);
+          else if (request.method === "POST") response = await handleCreateCollection(request, env);
+          else response = new Response("Not found", { status: 404 });
       } else if (parts.length === 4) {
           const id = parts[3];
-          if (request.method === "GET") return handleGetCollection(request, env, id);
-          if (request.method === "PUT") return handleUpdateCollection(request, env, id);
-          if (request.method === "DELETE") return handleDeleteCollection(request, env, id);
+          if (request.method === "GET") response = await handleGetCollection(request, env, id);
+          else if (request.method === "PUT") response = await handleUpdateCollection(request, env, id);
+          else if (request.method === "DELETE") response = await handleDeleteCollection(request, env, id);
+          else response = new Response("Not found", { status: 404 });
       } else if (parts.length === 5) {
           const id = parts[3];
           const action = parts[4];
-          if (action === "upload" && request.method === "POST") return handleCollectionZipUpload(request, env, id);
-          if (action === "download" && request.method === "GET") return handleCollectionZipDownload(request, env, id);
-          if (action === "export" && request.method === "GET") return handleCollectionJsonExport(request, env, id);
+          if (action === "upload" && request.method === "POST") response = await handleCollectionZipUpload(request, env, id);
+          else if (action === "download" && request.method === "GET") response = await handleCollectionZipDownload(request, env, id);
+          else if (action === "export" && request.method === "GET") response = await handleCollectionJsonExport(request, env, id);
+          else response = new Response("Not found", { status: 404 });
+      } else {
+          response = new Response("Not found", { status: 404 });
       }
   }
-
   // Storage routes
   // Bulk operations
-  if (url.pathname === "/api/storage/bulk/download") {
-    if (request.method === "POST") return handleBulkDownload(request, env);
+  else if (url.pathname === "/api/storage/bulk/download") {
+    if (request.method === "POST") response = await handleBulkDownload(request, env);
+    else response = new Response("Method not allowed", { status: 405 });
   }
-  if (url.pathname === "/api/storage/bulk/export") {
-    if (request.method === "POST") return handleBulkExport(request, env);
+  else if (url.pathname === "/api/storage/bulk/export") {
+    if (request.method === "POST") response = await handleBulkExport(request, env);
+    else response = new Response("Method not allowed", { status: 405 });
   }
-  if (url.pathname === "/api/storage/bulk/delete") {
-      if (request.method === "POST") return handleBulkDelete(request, env);
+  else if (url.pathname === "/api/storage/bulk/delete") {
+      if (request.method === "POST") response = await handleBulkDelete(request, env);
+      else response = new Response("Method not allowed", { status: 405 });
   }
-
-  if (url.pathname.startsWith("/api/storage/entry")) {
+  else if (url.pathname.startsWith("/api/storage/entry")) {
     const parts = url.pathname.split("/");
     const id = parts[4]; // /api/storage/entry/:id
 
     if (id) {
       if (request.method === "GET") {
-        return handleGetEntry(request, env, id);
+        response = await handleGetEntry(request, env, id);
       }
-      if (request.method === "PUT") {
-        return handleUpdateEntry(request, env, id);
+      else if (request.method === "PUT") {
+        response = await handleUpdateEntry(request, env, id);
       }
-      if (request.method === "DELETE") {
-        return handleDeleteEntry(request, env, id);
+      else if (request.method === "DELETE") {
+        response = await handleDeleteEntry(request, env, id);
+      }
+      else {
+        response = new Response("Method not allowed", { status: 405 });
       }
     } else {
       if (request.method === "POST") {
-        return handleCreateEntry(request, env);
+        response = await handleCreateEntry(request, env);
+      } else {
+        response = new Response("Method not allowed", { status: 405 });
       }
     }
   }
-
-  if (url.pathname === "/api/storage/entries") {
-    return handleListEntries(request, env);
+  else if (url.pathname === "/api/storage/entries") {
+    response = await handleListEntries(request, env);
   }
-
   // Public shared link
-  if (url.pathname.startsWith("/api/public/share")) {
-    return handlePublicShare(request, env);
+  else if (url.pathname.startsWith("/api/public/share")) {
+    response = await handlePublicShare(request, env);
   }
-
-  if (url.pathname.startsWith("/api/public/collection")) {
-    return handlePublicCollection(request, env);
+  else if (url.pathname.startsWith("/api/public/collection")) {
+    response = await handlePublicCollection(request, env);
   }
-
   // Health check
-  if (url.pathname === "/health") {
-    return new Response("ok", { status: 200 });
+  else if (url.pathname === "/health") {
+    response = new Response("ok", { status: 200 });
   }
-
   // Handle client-side routing fallback for frontend
-  // If the request accepts HTML and it's not an API call, serve the frontend
-  if (
+  else if (
     request.headers.get("Accept")?.includes("text/html") &&
     !url.pathname.startsWith("/api/") &&
     !url.pathname.startsWith("/auth/")
   ) {
-    return renderFrontend();
+    response = renderFrontend();
+  }
+  else {
+    response = new Response("Not found", { status: 404 });
   }
 
-  return new Response("Not found", { status: 404 });
+  // Add CORS headers to final response
+  return addCorsHeaders(response, request);
 }
 
 // ===== Storage Handlers =====
