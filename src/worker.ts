@@ -82,7 +82,16 @@ function createUnauthorizedResponse(
   message: string
 ): Response {
   const url = new URL(request.url);
-  const loginUrl = `${url.origin}/auth/login`;
+
+  let redirect = url.searchParams.get("redirect");
+  if (!redirect) {
+    redirect = request.headers.get("Referer");
+  }
+
+  let loginUrl = `${url.origin}/auth/login`;
+  if (redirect) {
+    loginUrl += `?redirect=${encodeURIComponent(redirect)}`;
+  }
 
   const errorBody = {
     error: "UNAUTHORIZED",
