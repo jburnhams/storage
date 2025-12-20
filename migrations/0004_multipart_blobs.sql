@@ -1,19 +1,7 @@
 -- Migration: Add support for multipart blobs
 -- Created: 2025-12-16
 
--- 1. Create blob_parts table
-CREATE TABLE IF NOT EXISTS blob_parts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    value_id INTEGER NOT NULL,
-    part_index INTEGER NOT NULL,
-    data BLOB NOT NULL,
-    FOREIGN KEY (value_id) REFERENCES value_entries(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_blob_parts_value_id ON blob_parts(value_id);
-CREATE INDEX idx_blob_parts_value_index ON blob_parts(value_id, part_index);
-
--- 2. Create new value_entries table with is_multipart and size columns
+-- 1. Create new value_entries table with is_multipart and size columns
 CREATE TABLE IF NOT EXISTS value_entries_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     hash TEXT NOT NULL,
@@ -29,9 +17,7 @@ CREATE TABLE IF NOT EXISTS value_entries_new (
     )
 );
 
--- 3. Copy existing data
--- We assume existing data is not multipart.
--- We calculate size based on length of string or blob.
+-- 2. Copy existing data to value_entries_new
 INSERT INTO value_entries_new (id, hash, string_value, blob_value, type, created_at, is_multipart, size)
 SELECT
     id,
@@ -48,17 +34,46 @@ SELECT
     END
 FROM value_entries;
 
--- 4. Swap tables
--- We need to handle foreign key constraints from key_value_entries
--- Since key_value_entries references value_entries(id), and we are preserving IDs, this should be fine
--- if we turn off FK checks momentarily or if SQLite handles rename correctly.
--- However, SQLite foreign keys are verified on commit. Rename usually tracks.
+-- 3. Create temporary key_value_entries table pointing to value_entries_new
+CREATE TABLE IF NOT EXISTS key_value_entries_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    value_id INTEGER NOT NULL,
+    filename TEXT,
+    user_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (value_id) REFERENCES value_entries_new(id) ON DELETE RESTRICT
+);
 
-PRAGMA foreign_keys = OFF;
+-- 4. Copy data to key_value_entries_new
+INSERT INTO key_value_entries_new (id, key, value_id, filename, user_id, created_at, updated_at)
+SELECT id, key, value_id, filename, user_id, created_at, updated_at
+FROM key_value_entries;
 
+-- 5. Drop old tables
+DROP TABLE key_value_entries;
 DROP TABLE value_entries;
+
+-- 6. Rename new tables
 ALTER TABLE value_entries_new RENAME TO value_entries;
+ALTER TABLE key_value_entries_new RENAME TO key_value_entries;
 
-PRAGMA foreign_keys = ON;
-
+-- 7. Recreate indices
 CREATE INDEX idx_values_hash ON value_entries(hash);
+CREATE INDEX idx_entries_key ON key_value_entries(key);
+CREATE INDEX idx_entries_user_id ON key_value_entries(user_id);
+CREATE INDEX idx_entries_value_id ON key_value_entries(value_id);
+
+-- 8. Create blob_parts table (referencing the new value_entries)
+CREATE TABLE IF NOT EXISTS blob_parts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    value_id INTEGER NOT NULL,
+    part_index INTEGER NOT NULL,
+    data BLOB NOT NULL,
+    FOREIGN KEY (value_id) REFERENCES value_entries(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_blob_parts_value_id ON blob_parts(value_id);
+CREATE INDEX idx_blob_parts_value_index ON blob_parts(value_id, part_index);
