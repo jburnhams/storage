@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { handleRequest } from "../../src/worker";
+import app from "../../src/worker";
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from "cloudflare:test";
 import * as storage from "../../src/storage";
 import * as session from "../../src/session";
@@ -73,7 +73,7 @@ describe("Worker Storage API", () => {
 
         const req = new Request("http://localhost/api/storage/entries");
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
@@ -87,7 +87,7 @@ describe("Worker Storage API", () => {
 
         const req = new Request("http://localhost/api/storage/entry/1");
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
@@ -100,7 +100,7 @@ describe("Worker Storage API", () => {
 
         const req = new Request("http://localhost/api/storage/entry/1");
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(403);
@@ -120,7 +120,7 @@ describe("Worker Storage API", () => {
         });
 
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
@@ -141,7 +141,7 @@ describe("Worker Storage API", () => {
         });
 
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
@@ -157,7 +157,7 @@ describe("Worker Storage API", () => {
         });
 
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
@@ -169,7 +169,7 @@ describe("Worker Storage API", () => {
 
         const req = new Request("http://localhost/api/public/share?key=test.txt&secret=hash");
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(res.status).toBe(200);
@@ -180,7 +180,7 @@ describe("Worker Storage API", () => {
     it("should handle invalid id for get", async () => {
         const req = new Request("http://localhost/api/storage/entry/abc");
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
         expect(res.status).toBe(400);
     });
@@ -190,7 +190,7 @@ describe("Worker Storage API", () => {
         formData.append("key", "test");
         const req = new Request("http://localhost/api/storage/entry", { method: "POST", body: formData });
         const ctx = createExecutionContext();
-        const res = await handleRequest(req, env, ctx);
+        const res = await app.fetch(req, env, ctx);
         await waitOnExecutionContext(ctx);
         expect(res.status).toBe(400);
     });

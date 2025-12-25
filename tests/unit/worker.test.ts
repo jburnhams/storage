@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { handleRequest } from "../../src/worker";
+import app from "../../src/worker";
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from "cloudflare:test";
 
 // We still mock session/storage internals if we want to isolate the Worker routing logic,
@@ -33,7 +33,7 @@ describe("Storage Auth Worker", () => {
   it("serves the frontend at root path", async () => {
     const request = new Request("https://storage.test/");
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(200);
@@ -44,7 +44,7 @@ describe("Storage Auth Worker", () => {
   it("responds to health check", async () => {
     const request = new Request("https://storage.test/health");
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(200);
@@ -54,7 +54,7 @@ describe("Storage Auth Worker", () => {
   it("returns 404 for unknown paths", async () => {
     const request = new Request("https://storage.test/unknown");
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(404);
@@ -64,7 +64,7 @@ describe("Storage Auth Worker", () => {
     it("/auth/login redirects to Google OAuth", async () => {
       const request = new Request("https://storage.test/auth/login");
       const ctx = createExecutionContext();
-      const response = await handleRequest(request, env, ctx);
+      const response = await app.fetch(request, env, ctx);
       await waitOnExecutionContext(ctx);
 
       expect(response.status).toBe(302);
@@ -81,7 +81,7 @@ describe("Storage Auth Worker", () => {
         method: "POST",
       });
       const ctx = createExecutionContext();
-      const response = await handleRequest(request, env, ctx);
+      const response = await app.fetch(request, env, ctx);
       await waitOnExecutionContext(ctx);
 
       expect(response.status).toBe(302);
@@ -93,7 +93,7 @@ describe("Storage Auth Worker", () => {
     it("/auth/logout rejects GET requests", async () => {
       const request = new Request("https://storage.test/auth/logout");
       const ctx = createExecutionContext();
-      const response = await handleRequest(request, env, ctx);
+      const response = await app.fetch(request, env, ctx);
       await waitOnExecutionContext(ctx);
 
       expect(response.status).toBe(405);
@@ -106,7 +106,7 @@ describe("Storage Auth Worker", () => {
     it("/api/user returns 401 with login_url without session", async () => {
       const request = new Request("https://storage.test/api/user");
       const ctx = createExecutionContext();
-      const response = await handleRequest(request, env, ctx);
+      const response = await app.fetch(request, env, ctx);
       await waitOnExecutionContext(ctx);
 
       expect(response.status).toBe(401);
@@ -121,7 +121,7 @@ describe("Storage Auth Worker", () => {
         const redirectTarget = "https://client-app.com/dashboard";
         const request = new Request(`https://storage.test/auth/login?redirect=${encodeURIComponent(redirectTarget)}`);
         const ctx = createExecutionContext();
-        const response = await handleRequest(request, env, ctx);
+        const response = await app.fetch(request, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(response.status).toBe(302);
@@ -143,7 +143,7 @@ describe("Storage Auth Worker", () => {
         const redirectTarget = "https://client-app.com/dàshbøard?q=🔍";
         const request = new Request(`https://storage.test/auth/login?redirect=${encodeURIComponent(redirectTarget)}`);
         const ctx = createExecutionContext();
-        const response = await handleRequest(request, env, ctx);
+        const response = await app.fetch(request, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(response.status).toBe(302);

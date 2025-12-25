@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { handleRequest } from "../../src/worker";
+import app from "../../src/worker";
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from "cloudflare:test";
 
 describe("CORS Support", () => {
@@ -31,7 +31,7 @@ describe("CORS Support", () => {
           }
         });
         const ctx = createExecutionContext();
-        const response = await handleRequest(request, env, ctx);
+        const response = await app.fetch(request, env, ctx);
         await waitOnExecutionContext(ctx);
 
         expect(response.status).toBe(204);
@@ -51,7 +51,7 @@ describe("CORS Support", () => {
             }
           });
           const ctx = createExecutionContext();
-          const response = await handleRequest(request, env, ctx);
+          const response = await app.fetch(request, env, ctx);
           await waitOnExecutionContext(ctx);
 
           // Should probably still be 204 or maybe 403, but definitely no allow-origin header
@@ -73,7 +73,7 @@ describe("CORS Support", () => {
                 }
             });
             const ctx = createExecutionContext();
-            const response = await handleRequest(request, env, ctx);
+            const response = await app.fetch(request, env, ctx);
             await waitOnExecutionContext(ctx);
 
             // It might return 401 because we are not authenticated, but headers should be there
@@ -91,7 +91,7 @@ describe("CORS Support", () => {
                 }
             });
             const ctx = createExecutionContext();
-            const response = await handleRequest(request, env, ctx);
+            const response = await app.fetch(request, env, ctx);
             await waitOnExecutionContext(ctx);
 
             expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
