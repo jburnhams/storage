@@ -258,19 +258,11 @@ const uploadCollectionZipRoute = createRoute({
   method: 'post',
   path: '/api/collections/{id}/upload',
   tags: ['Collections'],
-  summary: 'Upload ZIP to collection',
+  summary: 'Upload ZIP to collection (multipart/form-data)',
+  description: 'Upload a ZIP file to extract into the collection. FormData field: file (required ZIP file)',
   middleware: [requireAuth] as any,
   request: {
     params: IdParamSchema,
-    body: {
-      content: {
-        'multipart/form-data': {
-          schema: z.object({
-            file: z.any(),
-          }),
-        },
-      },
-    },
   },
   responses: {
     200: {

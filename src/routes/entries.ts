@@ -61,24 +61,9 @@ const createEntryRoute = createRoute({
   method: 'post',
   path: '/api/storage/entry',
   tags: ['Storage'],
-  summary: 'Create a new entry',
+  summary: 'Create a new entry (multipart/form-data)',
+  description: 'Upload a file or string value. FormData fields: key (required), type (required), string_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
   middleware: [requireAuth] as any,
-  request: {
-    body: {
-      content: {
-        'multipart/form-data': {
-          schema: z.object({
-            key: z.string(),
-            type: z.string(),
-            string_value: z.string().optional(),
-            file: z.any().optional(),
-            collection_id: z.string().optional(),
-            metadata: z.string().optional(),
-          }),
-        },
-      },
-    },
-  },
   responses: {
     200: {
       description: 'Entry created',
@@ -162,24 +147,11 @@ const updateEntryRoute = createRoute({
   method: 'put',
   path: '/api/storage/entry/{id}',
   tags: ['Storage'],
-  summary: 'Update an entry',
+  summary: 'Update an entry (multipart/form-data)',
+  description: 'Update an existing entry. FormData fields: key (optional), type (required), string_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
   middleware: [requireAuth] as any,
   request: {
     params: IdParamSchema,
-    body: {
-      content: {
-        'multipart/form-data': {
-          schema: z.object({
-            key: z.string().optional(),
-            type: z.string(),
-            string_value: z.string().optional(),
-            file: z.any().optional(),
-            collection_id: z.string().optional(),
-            metadata: z.string().optional(),
-          }),
-        },
-      },
-    },
   },
   responses: {
     200: {
