@@ -133,14 +133,15 @@ export function registerAuthRoutes(app: AppType) {
       const userInfo = await getGoogleUserInfo(tokens.access_token);
 
       // Create or get user
-      const user = await getOrCreateUser(c.env.DB, {
-        email: userInfo.email,
-        name: userInfo.name,
-        profile_picture: userInfo.picture,
-      });
+      const user = await getOrCreateUser(
+        userInfo.email,
+        userInfo.name,
+        userInfo.picture,
+        c.env
+      );
 
       // Create session
-      const sessionId = await createSession(c.env.DB, user.id);
+      const sessionId = await createSession(user.id, c.env);
 
       // Decode state to get redirect URL
       const { redirect } = decodeState(state);

@@ -204,7 +204,7 @@ export function registerUserRoutes(app: AppType) {
   // GET /api/session
   app.openapi(getSessionRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
 
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
@@ -223,7 +223,7 @@ export function registerUserRoutes(app: AppType) {
   // GET /api/user
   app.openapi(getUserRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
 
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
@@ -234,13 +234,13 @@ export function registerUserRoutes(app: AppType) {
 
   // GET /api/users
   app.openapi(listUsersRoute, async (c) => {
-    const users = await getAllUsers(c.env.DB);
+    const users = await getAllUsers(c.env);
     return c.json(users.map(userToResponse));
   });
 
   // GET /api/sessions
   app.openapi(listSessionsRoute, async (c) => {
-    const sessions = await getAllSessions(c.env.DB);
+    const sessions = await getAllSessions(c.env);
     return c.json(
       sessions.map((s) => ({
         ...s,
@@ -254,7 +254,7 @@ export function registerUserRoutes(app: AppType) {
     const { email } = c.req.valid('json');
 
     try {
-      const user = await promoteUserToAdmin(c.env.DB, email);
+      const user = await promoteUserToAdmin(email, c.env);
       return c.json(userToResponse(user));
     } catch (error) {
       return c.json(

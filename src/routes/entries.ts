@@ -71,7 +71,7 @@ const createEntryRoute = createRoute({
             key: z.string(),
             type: z.string(),
             string_value: z.string().optional(),
-            file: z.instanceof(File).optional(),
+            file: z.any().optional(),
             collection_id: z.string().optional(),
             metadata: z.string().optional(),
           }),
@@ -173,7 +173,7 @@ const updateEntryRoute = createRoute({
             key: z.string().optional(),
             type: z.string(),
             string_value: z.string().optional(),
-            file: z.instanceof(File).optional(),
+            file: z.any().optional(),
             collection_id: z.string().optional(),
             metadata: z.string().optional(),
           }),
@@ -275,7 +275,7 @@ export function registerEntryRoutes(app: AppType) {
   // GET /api/storage/entries
   app.openapi(listEntriesRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -296,7 +296,7 @@ export function registerEntryRoutes(app: AppType) {
   // POST /api/storage/entry
   app.openapi(createEntryRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -370,7 +370,7 @@ export function registerEntryRoutes(app: AppType) {
   // GET /api/storage/entry/:id
   app.openapi(getEntryRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -405,7 +405,7 @@ export function registerEntryRoutes(app: AppType) {
   // PUT /api/storage/entry/:id
   app.openapi(updateEntryRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -505,7 +505,7 @@ export function registerEntryRoutes(app: AppType) {
   // DELETE /api/storage/entry/:id
   app.openapi(deleteEntryRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }

@@ -266,7 +266,7 @@ const uploadCollectionZipRoute = createRoute({
       content: {
         'multipart/form-data': {
           schema: z.object({
-            file: z.instanceof(File),
+            file: z.any(),
           }),
         },
       },
@@ -439,7 +439,7 @@ export function registerCollectionRoutes(app: AppType) {
   // GET /api/collections/:id
   app.openapi(getCollectionRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -461,7 +461,7 @@ export function registerCollectionRoutes(app: AppType) {
   // PUT /api/collections/:id
   app.openapi(updateCollectionRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -485,7 +485,7 @@ export function registerCollectionRoutes(app: AppType) {
   // DELETE /api/collections/:id
   app.openapi(deleteCollectionRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -508,7 +508,7 @@ export function registerCollectionRoutes(app: AppType) {
   // POST /api/collections/:id/upload
   app.openapi(uploadCollectionZipRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -582,7 +582,7 @@ export function registerCollectionRoutes(app: AppType) {
   // GET /api/collections/:id/download
   app.openapi(downloadCollectionZipRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -634,7 +634,7 @@ export function registerCollectionRoutes(app: AppType) {
   // GET /api/collections/:id/export
   app.openapi(exportCollectionJsonRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }

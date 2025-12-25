@@ -92,13 +92,13 @@ export async function requireAuth(c: Context<{ Bindings: Env; Variables: { sessi
     return c.json({ error: 'unauthorized', message: 'Authentication required' }, 401);
   }
 
-  const session = await getSession(c.env.DB, sessionId);
+  const session = await getSession(sessionId, c.env);
   if (!session) {
     return c.json({ error: 'unauthorized', message: 'Session expired or invalid' }, 401);
   }
 
   // Update last used timestamp in background
-  c.executionCtx.waitUntil(updateSessionLastUsed(c.env.DB, sessionId));
+  c.executionCtx.waitUntil(updateSessionLastUsed(sessionId, c.env));
 
   // Set session context
   c.set('session', { user_id: session.user_id, session_id: sessionId });

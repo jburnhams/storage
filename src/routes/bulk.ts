@@ -236,7 +236,7 @@ export function registerBulkRoutes(app: AppType) {
   // POST /api/storage/bulk/download
   app.openapi(bulkDownloadRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -278,7 +278,7 @@ export function registerBulkRoutes(app: AppType) {
   // POST /api/storage/bulk/export
   app.openapi(bulkExportRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
@@ -319,7 +319,7 @@ export function registerBulkRoutes(app: AppType) {
   // POST /api/storage/bulk/delete
   app.openapi(bulkDeleteRoute, async (c) => {
     const session = c.get('session')!;
-    const user = await getUserById(c.env.DB, session.user_id);
+    const user = await getUserById(session.user_id, c.env);
     if (!user) {
       return c.json({ error: 'not_found', message: 'User not found' }, 404);
     }
