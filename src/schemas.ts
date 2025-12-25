@@ -150,7 +150,17 @@ export const AuthLoginQuerySchema = z.object({
 // ===== Path Parameter Schemas =====
 
 export const IdParamSchema = z.object({
-  id: z.string().transform((val) => parseInt(val, 10)),
+  id: z.string().transform((val, ctx) => {
+    const parsed = parseInt(val, 10);
+    if (isNaN(parsed)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid ID: must be a number',
+      });
+      return z.NEVER;
+    }
+    return parsed;
+  }),
 });
 
 // ===== Response Lists =====

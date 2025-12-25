@@ -249,7 +249,7 @@ export function registerEntryRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const query = c.req.valid('query');
@@ -270,7 +270,7 @@ export function registerEntryRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     try {
@@ -283,14 +283,14 @@ export function registerEntryRoutes(app: AppType) {
       const metadata = formData.get('metadata') as string | null;
 
       if (!key || !type) {
-        return c.json({ error: 'invalid_request', message: 'Key and Type are required' }, 400);
+        return c.json({ error: 'INVALID_REQUEST', message: 'Key and Type are required' }, 400);
       }
 
       let collectionId: number | null = null;
       if (collectionIdStr) {
         collectionId = parseInt(collectionIdStr, 10);
         if (isNaN(collectionId)) {
-          return c.json({ error: 'invalid_request', message: 'Invalid Collection ID' }, 400);
+          return c.json({ error: 'INVALID_REQUEST', message: 'Invalid Collection ID' }, 400);
         }
       }
 
@@ -335,7 +335,7 @@ export function registerEntryRoutes(app: AppType) {
       return c.json(entryToResponse(entry));
     } catch (e) {
       console.error('Create error:', e);
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 
@@ -344,7 +344,7 @@ export function registerEntryRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
@@ -352,12 +352,12 @@ export function registerEntryRoutes(app: AppType) {
 
     const entry = await getEntryById(c.env, id);
     if (!entry) {
-      return c.json({ error: 'not_found', message: 'Entry not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
     // Access Control
     if (!user.is_admin && entry.user_id !== user.id) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     // If download param is present, serve blob if exists
@@ -379,18 +379,18 @@ export function registerEntryRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const existing = await getEntryById(c.env, id);
     if (!existing) {
-      return c.json({ error: 'not_found', message: 'Entry not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
     if (!user.is_admin && existing.user_id !== user.id) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     try {
@@ -403,7 +403,7 @@ export function registerEntryRoutes(app: AppType) {
       const metadata = formData.get('metadata') as string | null;
 
       if (!type) {
-        return c.json({ error: 'invalid_request', message: 'Type is required' }, 400);
+        return c.json({ error: 'INVALID_REQUEST', message: 'Type is required' }, 400);
       }
 
       const targetKey = key || existing.key;
@@ -415,7 +415,7 @@ export function registerEntryRoutes(app: AppType) {
         } else {
           collectionId = parseInt(collectionIdStr, 10);
           if (isNaN(collectionId)) {
-            return c.json({ error: 'invalid_request', message: 'Invalid Collection ID' }, 400);
+            return c.json({ error: 'INVALID_REQUEST', message: 'Invalid Collection ID' }, 400);
           }
         }
       }
@@ -464,13 +464,13 @@ export function registerEntryRoutes(app: AppType) {
       );
 
       if (!entry) {
-        return c.json({ error: 'update_failed', message: 'Update failed' }, 500);
+        return c.json({ error: 'UPDATE_FAILED', message: 'Update failed' }, 500);
       }
 
       return c.json(entryToResponse(entry));
     } catch (e) {
       console.error('Update error:', e);
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 
@@ -479,18 +479,18 @@ export function registerEntryRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const existing = await getEntryById(c.env, id);
     if (!existing) {
-      return c.json({ error: 'not_found', message: 'Entry not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
     if (!user.is_admin && existing.user_id !== user.id) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     await deleteEntry(c.env, id);

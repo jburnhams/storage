@@ -433,18 +433,18 @@ export function registerCollectionRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     return c.json(collection);
@@ -455,7 +455,7 @@ export function registerCollectionRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
@@ -463,11 +463,11 @@ export function registerCollectionRoutes(app: AppType) {
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     const updated = await updateCollection(c.env, id, body.name, body.description, body.metadata);
@@ -479,18 +479,18 @@ export function registerCollectionRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     await deleteCollection(c.env, id);
@@ -502,24 +502,24 @@ export function registerCollectionRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     const formData = await c.req.formData();
     const file = formData.get('file') as File;
     if (!file) {
-      return c.json({ error: 'invalid_request', message: 'No file uploaded' }, 400);
+      return c.json({ error: 'INVALID_REQUEST', message: 'No file uploaded' }, 400);
     }
 
     let arrayBuffer: ArrayBuffer;
@@ -567,7 +567,7 @@ export function registerCollectionRoutes(app: AppType) {
       return c.json({ message: 'ZIP uploaded successfully', count: promises.length });
     } catch (e) {
       console.error('ZIP upload error:', e);
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 
@@ -576,18 +576,18 @@ export function registerCollectionRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     try {
@@ -619,7 +619,7 @@ export function registerCollectionRoutes(app: AppType) {
       });
     } catch (e) {
       console.error('Zip generation error', e);
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 
@@ -628,18 +628,18 @@ export function registerCollectionRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     const { id } = c.req.valid('param');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'forbidden', message: 'Access denied' }, 403);
+      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
     const entries = await listEntries(c.env, user, undefined, undefined, id);

@@ -103,10 +103,13 @@ export function registerAuthRoutes(app: AppType) {
     const redirectUri = getRedirectUri(c.req.raw);
     const authUrl = getGoogleAuthUrl(c.env.GOOGLE_CLIENT_ID, redirectUri, state);
 
-    const response = Response.redirect(authUrl, 302);
-    response.headers.set('Set-Cookie', setStateCookie(state, c.req.raw));
-
-    return response;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': authUrl,
+        'Set-Cookie': setStateCookie(state, c.req.raw),
+      },
+    });
   });
 
   // GET /auth/callback
@@ -116,7 +119,7 @@ export function registerAuthRoutes(app: AppType) {
     // Verify state parameter
     const savedState = getStateFromCookie(c.req.raw);
     if (!savedState || savedState !== state) {
-      return c.json({ error: 'invalid_state', message: 'State parameter mismatch' }, 400);
+      return c.json({ error: 'INVALID_STATE', message: 'State parameter mismatch' }, 400);
     }
 
     try {
@@ -162,17 +165,20 @@ export function registerAuthRoutes(app: AppType) {
       }
 
       // Set session cookie and redirect
-      const response = Response.redirect(new URL(redirectUrl, c.req.url).toString(), 302);
-      response.headers.set('Set-Cookie', setSessionCookie(sessionId, c.req.raw));
-      // Also clear state cookie
-      response.headers.append('Set-Cookie', clearStateCookie(c.req.raw));
+      const headers = new Headers();
+      headers.set('Location', new URL(redirectUrl, c.req.url).toString());
+      headers.append('Set-Cookie', setSessionCookie(sessionId, c.req.raw));
+      headers.append('Set-Cookie', clearStateCookie(c.req.raw));
 
-      return response;
+      return new Response(null, {
+        status: 302,
+        headers,
+      });
     } catch (error) {
       console.error('OAuth callback error:', error);
       return c.json(
         {
-          error: 'oauth_error',
+          error: 'OAUTH_ERROR',
           message: error instanceof Error ? error.message : 'Authentication failed',
         },
         500
@@ -182,8 +188,17 @@ export function registerAuthRoutes(app: AppType) {
 
   // POST /auth/logout
   app.openapi(logoutRoute, async (c) => {
-    const response = c.json({ message: 'Logged out successfully' });
-    response.headers.set('Set-Cookie', clearSessionCookie(c.req.raw));
-    return response;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': '/',
+        'Set-Cookie': clearSessionCookie(c.req.raw),
+      },
+    });
+  });
+
+  // Handle unsupported methods for /auth/logout
+  app.get('/auth/logout', (c) => {
+    return c.json({ error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' }, 405);
   });
 }

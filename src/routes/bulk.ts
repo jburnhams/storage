@@ -238,7 +238,7 @@ export function registerBulkRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     try {
@@ -271,7 +271,7 @@ export function registerBulkRoutes(app: AppType) {
         },
       });
     } catch (e) {
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 
@@ -280,7 +280,7 @@ export function registerBulkRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     try {
@@ -312,7 +312,7 @@ export function registerBulkRoutes(app: AppType) {
 
       return c.json({ contents });
     } catch (e) {
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 
@@ -321,7 +321,7 @@ export function registerBulkRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     try {
@@ -337,7 +337,7 @@ export function registerBulkRoutes(app: AppType) {
 
       return c.json({ message: 'Entries deleted successfully' });
     } catch (e) {
-      return c.json({ error: 'server_error', message: String(e) }, 500);
+      return c.json({ error: 'SERVER_ERROR', message: String(e) }, 500);
     }
   });
 }
@@ -349,7 +349,7 @@ export function registerPublicRoutes(app: AppType) {
 
     const entry = await getEntryByKeySecret(c.env, key, secret);
     if (!entry) {
-      return c.json({ error: 'not_found', message: 'Entry not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
     if (raw || download) {
@@ -378,7 +378,7 @@ export function registerPublicRoutes(app: AppType) {
 
     const collection = await getCollectionBySecret(c.env, secret);
     if (!collection) {
-      return c.json({ error: 'not_found', message: 'Collection not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
     // Mock user object for listEntries

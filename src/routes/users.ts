@@ -207,7 +207,7 @@ export function registerUserRoutes(app: AppType) {
     const user = await getUserById(session.user_id, c.env);
 
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     return c.json({
@@ -226,7 +226,7 @@ export function registerUserRoutes(app: AppType) {
     const user = await getUserById(session.user_id, c.env);
 
     if (!user) {
-      return c.json({ error: 'not_found', message: 'User not found' }, 404);
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
 
     return c.json(userToResponse(user));
@@ -259,7 +259,7 @@ export function registerUserRoutes(app: AppType) {
     } catch (error) {
       return c.json(
         {
-          error: 'not_found',
+          error: 'NOT_FOUND',
           message: error instanceof Error ? error.message : 'User not found',
         },
         404

@@ -86,15 +86,37 @@ export interface SessionContext {
   session_id: string;
 }
 
+function createUnauthorizedResponse(c: Context, message: string) {
+  const url = new URL(c.req.url);
+
+  // Check for redirect parameter from query string or Referer header
+  let redirect = url.searchParams.get('redirect');
+  if (!redirect) {
+    redirect = c.req.header('Referer') || null;
+  }
+
+  // Build login URL
+  let loginUrl = `${url.origin}/auth/login`;
+  if (redirect) {
+    loginUrl += `?redirect=${encodeURIComponent(redirect)}`;
+  }
+
+  return c.json({
+    error: 'UNAUTHORIZED',
+    message,
+    login_url: loginUrl,
+  }, 401);
+}
+
 export async function requireAuth(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
   const sessionId = getSessionIdFromCookie(c.req.raw);
   if (!sessionId) {
-    return c.json({ error: 'unauthorized', message: 'Authentication required' }, 401);
+    return createUnauthorizedResponse(c, 'Authentication required');
   }
 
   const session = await getSession(sessionId, c.env);
   if (!session) {
-    return c.json({ error: 'unauthorized', message: 'Session expired or invalid' }, 401);
+    return createUnauthorizedResponse(c, 'Session expired or invalid');
   }
 
   // Update last used timestamp in background
@@ -111,14 +133,14 @@ export async function requireAuth(c: Context<{ Bindings: Env; Variables: { sessi
 export async function requireAdmin(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
   const sessionContext = c.get('session');
   if (!sessionContext) {
-    return c.json({ error: 'unauthorized', message: 'Authentication required' }, 401);
+    return createUnauthorizedResponse(c, 'Authentication required');
   }
 
   const { isUserAdmin } = await import('./session');
   const isAdmin = await isUserAdmin(c.env.DB, sessionContext.user_id);
 
   if (!isAdmin) {
-    return c.json({ error: 'forbidden', message: 'Admin access required' }, 403);
+    return c.json({ error: 'FORBIDDEN', message: 'Admin access required' }, 403);
   }
 
   await next();
@@ -130,7 +152,7 @@ export function errorHandler(err: Error, c: Context) {
   console.error('Unhandled error:', err);
   return c.json(
     {
-      error: 'internal_server_error',
+      error: 'INTERNAL_SERVER_ERROR',
       message: err.message || 'An unexpected error occurred',
     },
     500
