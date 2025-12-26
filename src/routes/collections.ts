@@ -522,15 +522,22 @@ export function registerCollectionRoutes(app: AppType) {
       return c.json({ error: 'INVALID_REQUEST', message: 'No file uploaded' }, 400);
     }
 
+    // Handle different File object types from various JavaScript environments
     let arrayBuffer: ArrayBuffer;
     if (typeof file === 'string') {
-      // Handle mock case
+      // Binary data as string (Miniflare/workerd FormData parser quirk)
       const str = file as string;
       const buf = new Uint8Array(str.length);
       for (let i = 0; i < str.length; i++) buf[i] = str.charCodeAt(i);
       arrayBuffer = buf.buffer;
-    } else {
+    } else if (file instanceof ArrayBuffer) {
+      arrayBuffer = file;
+    } else if (file instanceof Uint8Array) {
+      arrayBuffer = file.buffer;
+    } else if (typeof file.arrayBuffer === 'function') {
       arrayBuffer = await file.arrayBuffer();
+    } else {
+      arrayBuffer = await new Response(file as any).arrayBuffer();
     }
 
     try {

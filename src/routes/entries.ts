@@ -298,8 +298,9 @@ export function registerEntryRoutes(app: AppType) {
       let filename: string | undefined = undefined;
 
       if (file) {
+        // Handle different File object types from various JavaScript environments
         if (typeof file === 'string') {
-          // Workaround for Miniflare/workerd integration tests
+          // Binary data as string (Miniflare/workerd FormData parser quirk)
           const str = file as string;
           const buf = new Uint8Array(str.length);
           for (let i = 0; i < str.length; i++) {
@@ -307,10 +308,17 @@ export function registerEntryRoutes(app: AppType) {
           }
           blobValue = buf.buffer;
           filename = undefined;
+        } else if (file instanceof ArrayBuffer) {
+          blobValue = file;
+          filename = undefined;
+        } else if (file instanceof Uint8Array) {
+          blobValue = file.buffer;
+          filename = undefined;
         } else if (typeof file.arrayBuffer === 'function') {
           blobValue = await file.arrayBuffer();
           filename = file.name;
         } else {
+          // Fallback for File-like objects without arrayBuffer method
           blobValue = await new Response(file as any).arrayBuffer();
           filename = (file as any).name;
         }
@@ -425,7 +433,9 @@ export function registerEntryRoutes(app: AppType) {
       let finalStringValue = stringValue;
 
       if (file) {
+        // Handle different File object types from various JavaScript environments
         if (typeof file === 'string') {
+          // Binary data as string (Miniflare/workerd FormData parser quirk)
           const str = file as string;
           const buf = new Uint8Array(str.length);
           for (let i = 0; i < str.length; i++) {
@@ -433,10 +443,17 @@ export function registerEntryRoutes(app: AppType) {
           }
           blobValue = buf.buffer;
           filename = undefined;
+        } else if (file instanceof ArrayBuffer) {
+          blobValue = file;
+          filename = undefined;
+        } else if (file instanceof Uint8Array) {
+          blobValue = file.buffer;
+          filename = undefined;
         } else if (typeof file.arrayBuffer === 'function') {
           blobValue = await file.arrayBuffer();
           filename = file.name;
         } else {
+          // Fallback for File-like objects without arrayBuffer method
           blobValue = await new Response(file as any).arrayBuffer();
           filename = (file as any).name;
         }
