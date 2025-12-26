@@ -117,8 +117,8 @@ export const PublicShareQuerySchema = z.object({
   download: z.string().optional().transform((val) => val === 'true'),
 });
 
-export const PublicCollectionQuerySchema = z.object({
-  secret: z.string(),
+export const ExportCollectionQuerySchema = z.object({
+  secret: z.string().optional(),
 });
 
 // ===== Bulk Operation Schemas =====
@@ -185,7 +185,7 @@ export type PromoteAdminRequest = z.infer<typeof PromoteAdminRequestSchema>;
 export type ListEntriesQuery = z.infer<typeof ListEntriesQuerySchema>;
 export type GetEntryQuery = z.infer<typeof GetEntryQuerySchema>;
 export type PublicShareQuery = z.infer<typeof PublicShareQuerySchema>;
-export type PublicCollectionQuery = z.infer<typeof PublicCollectionQuerySchema>;
+export type ExportCollectionQuery = z.infer<typeof ExportCollectionQuerySchema>;
 export type BulkDownloadRequest = z.infer<typeof BulkDownloadRequestSchema>;
 export type BulkExportRequest = z.infer<typeof BulkExportRequestSchema>;
 export type BulkDeleteRequest = z.infer<typeof BulkDeleteRequestSchema>;

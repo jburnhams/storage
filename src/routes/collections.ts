@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Env, User } from '../types';
 import type { SessionContext } from '../middleware';
-import { requireAuth } from '../middleware';
+import { requireAuth, attemptAuth } from '../middleware';
 import {
   createCollection,
   getCollection,
@@ -22,6 +22,7 @@ import {
   UpdateCollectionRequestSchema,
   IdParamSchema,
   ErrorResponseSchema,
+  ExportCollectionQuerySchema,
 } from '../schemas';
 
 type AppType = OpenAPIHono<{
@@ -363,9 +364,10 @@ const exportCollectionJsonRoute = createRoute({
   path: '/api/collections/{id}/export',
   tags: ['Collections'],
   summary: 'Export collection as JSON',
-  middleware: [requireAuth] as any,
+  middleware: [attemptAuth] as any,
   request: {
     params: IdParamSchema,
+    query: ExportCollectionQuerySchema,
   },
   responses: {
     200: {
@@ -632,24 +634,51 @@ export function registerCollectionRoutes(app: AppType) {
 
   // GET /api/collections/:id/export
   app.openapi(exportCollectionJsonRoute, async (c) => {
-    const session = c.get('session')!;
-    const user = await getUserById(session.user_id, c.env);
-    if (!user) {
-      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
-    }
-
+    const session = c.get('session');
     const { id } = c.req.valid('param');
+    const { secret } = c.req.valid('query');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
       return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
-    if (collection.user_id !== user.id && !user.is_admin) {
-      return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
+    let isAuthorized = false;
+    let viewingUser: User | null = null;
+
+    // Check session auth
+    if (session) {
+        const user = await getUserById(session.user_id, c.env);
+        if (user) {
+             viewingUser = user;
+             if (collection.user_id === user.id || user.is_admin) {
+                 isAuthorized = true;
+             }
+        }
     }
 
-    const entries = await listEntries(c.env, user, undefined, undefined, id);
+    // Check secret bypass
+    if (!isAuthorized && secret && secret === collection.secret) {
+        isAuthorized = true;
+        // Logic requires a user object for listEntries.
+        // If bypassing, we can mock a user or update listEntries to handle no user (if we pass just collectionId).
+        // listEntries implementation:
+        // if (!user.is_admin) { query += " AND k.user_id = ?"; params.push(user.id); }
+        // We need to bypass this user check if we are accessing via secret.
+        // We can create a mock user object representing the owner of the collection for listing purposes,
+        // since we are authorized to see this collection's content.
+        viewingUser = { id: collection.user_id, is_admin: 0 } as User;
+    }
+
+    if (!isAuthorized) {
+        if (!session) {
+             return c.json({ error: 'UNAUTHORIZED', message: 'Authentication required' }, 401);
+        }
+        return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
+    }
+
+    // viewingUser is guaranteed to be set if isAuthorized is true (either real user or mocked owner)
+    const entries = await listEntries(c.env, viewingUser!, undefined, undefined, id);
     const contents: any[] = [];
     const baseUrl = new URL(c.req.url).origin;
 

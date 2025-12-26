@@ -11,7 +11,6 @@ import {
   BulkExportRequestSchema,
   BulkDeleteRequestSchema,
   PublicShareQuerySchema,
-  PublicCollectionQuerySchema,
   EntryResponseSchema,
   ErrorResponseSchema,
 } from '../schemas';
@@ -195,43 +194,6 @@ const publicShareRoute = createRoute({
   },
 });
 
-// GET /api/public/collection
-const publicCollectionRoute = createRoute({
-  method: 'get',
-  path: '/api/public/collection',
-  tags: ['Public'],
-  summary: 'Access shared collection publicly',
-  request: {
-    query: PublicCollectionQuerySchema,
-  },
-  responses: {
-    200: {
-      description: 'Shared collection with contents',
-      content: {
-        'application/json': {
-          schema: z.object({}).passthrough(),
-        },
-      },
-    },
-    400: {
-      description: 'Bad request',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: 'Not found',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-  },
-});
-
 export function registerBulkRoutes(app: AppType) {
   // POST /api/storage/bulk/download
   app.openapi(bulkDownloadRoute, async (c) => {
@@ -372,45 +334,4 @@ export function registerPublicRoutes(app: AppType) {
     return c.json(entryToResponse(entry));
   });
 
-  // GET /api/public/collection
-  app.openapi(publicCollectionRoute, async (c) => {
-    const { secret } = c.req.valid('query');
-
-    const collection = await getCollectionBySecret(c.env, secret);
-    if (!collection) {
-      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
-    }
-
-    // Mock user object for listEntries
-    const mockUser = { id: collection.user_id, is_admin: 0 } as User;
-
-    const entries = await listEntries(c.env, mockUser, undefined, undefined, collection.id);
-    const contents: any[] = [];
-    const baseUrl = new URL(c.req.url).origin;
-
-    for (const entryMeta of entries) {
-      const entry = await getEntryById(c.env, entryMeta.id);
-      if (!entry) continue;
-
-      if (entry.blob_value) {
-        contents.push({
-          key: entry.key,
-          type: 'file',
-          mime_type: entry.type,
-          url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`,
-        });
-      } else {
-        contents.push({
-          key: entry.key,
-          type: 'value',
-          value: entry.string_value,
-        });
-      }
-    }
-
-    return c.json({
-      ...collection,
-      contents,
-    });
-  });
 }

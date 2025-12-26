@@ -92,22 +92,37 @@ function createUnauthorizedResponse(c: Context, message: string) {
   }, 401);
 }
 
-export async function requireAuth(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
+export async function loadSession(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>) {
   const sessionId = getSessionIdFromCookie(c.req.raw);
-  if (!sessionId) {
-    return createUnauthorizedResponse(c, 'Authentication required');
-  }
+  if (!sessionId) return null;
 
   const session = await getSession(sessionId, c.env);
-  if (!session) {
-    return createUnauthorizedResponse(c, 'Session expired or invalid');
-  }
+  if (!session) return null;
 
   // Update last used timestamp in background
   c.executionCtx.waitUntil(updateSessionLastUsed(sessionId, c.env));
 
   // Set session context
   c.set('session', { user_id: session.user_id, session_id: sessionId });
+
+  return session;
+}
+
+export async function attemptAuth(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
+  await loadSession(c);
+  await next();
+}
+
+export async function requireAuth(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
+  const session = await loadSession(c);
+
+  if (!session) {
+    // Determine if we failed due to missing cookie or invalid session
+    // For now, consistent error message
+    const sessionId = getSessionIdFromCookie(c.req.raw);
+    const message = sessionId ? 'Session expired or invalid' : 'Authentication required';
+    return createUnauthorizedResponse(c, message);
+  }
 
   await next();
 }
