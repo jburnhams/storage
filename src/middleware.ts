@@ -28,22 +28,6 @@ function isAllowedOrigin(origin: string): boolean {
   }
 }
 
-export function addCorsHeaders(response: Response, origin: string | null): Response {
-  if (!origin || !isAllowedOrigin(origin)) {
-    return response;
-  }
-
-  const headers = new Headers(response.headers);
-  headers.set('Access-Control-Allow-Origin', origin);
-  headers.set('Access-Control-Allow-Credentials', 'true');
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
 export async function corsMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
   const origin = c.req.header('Origin');
 

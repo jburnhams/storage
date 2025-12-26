@@ -5,6 +5,7 @@ import type { SessionContext } from '../middleware';
 import { requireAuth, requireAdmin } from '../middleware';
 import {
   getUserById,
+  getUserByEmail,
   getAllUsers,
   getAllSessions,
   promoteUserToAdmin,
@@ -197,6 +198,14 @@ const promoteAdminRoute = createRoute({
         },
       },
     },
+    404: {
+      description: 'Not Found',
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+    },
   },
 });
 
@@ -241,12 +250,7 @@ export function registerUserRoutes(app: AppType) {
   // GET /api/sessions
   app.openapi(listSessionsRoute, async (c) => {
     const sessions = await getAllSessions(c.env);
-    return c.json(
-      sessions.map((s) => ({
-        ...s,
-        user: s.user ? userToResponse(s.user) : undefined,
-      }))
-    );
+    return c.json(sessions);
   });
 
   // POST /api/admin/promote
@@ -255,7 +259,20 @@ export function registerUserRoutes(app: AppType) {
 
     try {
       await promoteUserToAdmin(email, c.env);
-      return c.json({ success: true });
+
+      // Fetch the updated user to return
+      const user = await getUserByEmail(email, c.env);
+      if (!user) {
+        return c.json(
+          {
+            error: 'NOT_FOUND',
+            message: 'User not found after promotion',
+          },
+          404
+        );
+      }
+
+      return c.json(userToResponse(user), 200);
     } catch (error) {
       return c.json(
         {
