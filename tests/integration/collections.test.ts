@@ -1,36 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Miniflare } from "miniflare";
-import { createMiniflareInstance, seedTestData } from "./setup";
-import { readFileSync, rmSync } from "fs";
-import { join } from "path";
+import { createMiniflareInstance, seedTestData, bundleWorker } from "./setup";
+import { rmSync } from "fs";
 
 describe("Collection API Integration", () => {
     let mf: Miniflare;
     let persistPath: string;
     let db: D1Database;
-    const adminSessionId = "test-session-admin";
     const userSessionId = "test-session-user";
 
     beforeAll(async () => {
-        const esbuild = await import("esbuild");
-
-        const result = await esbuild.build({
-            entryPoints: ["src/worker.ts"],
-            bundle: true,
-            format: "esm",
-            platform: "browser",
-            mainFields: ["browser", "module", "main"],
-            write: false,
-            external: ["cloudflare:workers"],
-            alias: {
-                "buffer": "buffer",
-            },
-            define: {
-                "process.env.NODE_ENV": '"test"'
-            }
-        });
-
-        const scriptContent = result.outputFiles[0].text;
+        const scriptContent = await bundleWorker();
 
         const instance = await createMiniflareInstance({ script: scriptContent });
         mf = instance.mf;

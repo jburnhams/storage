@@ -111,7 +111,7 @@ const getEntryRoute = createRoute({
           schema: EntryResponseSchema,
         },
         'application/octet-stream': {
-          schema: z.instanceof(Blob),
+          schema: z.string().openapi({ format: 'binary' }),
         },
       },
     },
