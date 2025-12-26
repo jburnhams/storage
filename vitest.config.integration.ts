@@ -7,6 +7,13 @@ export default defineConfig({
     include: ["tests/integration/**/*.test.ts"],
     testTimeout: 30000, // Integration tests may take longer
     hookTimeout: 30000,
+    // Run tests sequentially to avoid bundling race conditions
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
