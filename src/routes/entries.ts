@@ -21,7 +21,7 @@ import {
   IdParamSchema,
   ErrorResponseSchema,
 } from '../schemas';
-import { validateEntryValue } from '../utils/validation';
+import { validateEntryValue, deriveType } from '../utils/validation';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -64,7 +64,7 @@ const createEntryRoute = createRoute({
   path: '/api/storage/entry',
   tags: ['Storage'],
   summary: 'Create or update an entry (multipart/form-data)',
-  description: 'Upload a file or string value. If an entry with the same key exists in the specified collection, it will be overwritten. FormData fields: key (required), type (required), string_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
+  description: 'Upload a file or string value. If an entry with the same key exists in the specified collection, it will be overwritten. FormData fields: key (required), type (optional), string_value (optional), json_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
   middleware: [requireAuth] as any,
   responses: {
     200: {
@@ -150,7 +150,7 @@ const updateEntryRoute = createRoute({
   path: '/api/storage/entry/{id}',
   tags: ['Storage'],
   summary: 'Update an entry (multipart/form-data)',
-  description: 'Update an existing entry. FormData fields: key (optional), type (required), string_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
+  description: 'Update an existing entry. FormData fields: key (optional), type (optional), string_value (optional), json_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
   middleware: [requireAuth] as any,
   request: {
     params: IdParamSchema,
@@ -278,21 +278,33 @@ export function registerEntryRoutes(app: AppType) {
     try {
       const formData = await c.req.formData();
       const key = formData.get('key') as string;
-      const type = formData.get('type') as string;
+      let type = formData.get('type') as string | null;
       const stringValue = formData.get('string_value') as string | null;
+      const jsonValueStr = formData.get('json_value') as string | null;
       const file = formData.get('file') as File | null;
       const collectionIdStr = formData.get('collection_id') as string | null;
       const metadata = formData.get('metadata') as string | null;
 
-      if (!key || !type) {
-        return c.json({ error: 'INVALID_REQUEST', message: 'Key and Type are required' }, 400);
+      if (!key) {
+        return c.json({ error: 'INVALID_REQUEST', message: 'Key is required' }, 400);
       }
 
-      // Validate string value if present
-      if (stringValue !== null && !file) {
-        const error = validateEntryValue(type, stringValue);
-        if (error) {
-          return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+      // Enforce exclusivity
+      const hasString = stringValue !== null && stringValue !== undefined;
+      const hasJson = jsonValueStr !== null && jsonValueStr !== undefined;
+      const hasFile = file !== null && file !== undefined && (typeof file !== 'string' || file.length > 0);
+
+      const count = (hasString ? 1 : 0) + (hasJson ? 1 : 0) + (hasFile ? 1 : 0);
+      if (count !== 1) {
+        return c.json({ error: 'INVALID_REQUEST', message: 'Exactly one of string_value, json_value, or file must be provided' }, 400);
+      }
+
+      let parsedJsonValue: any = undefined;
+      if (hasJson && jsonValueStr) {
+        try {
+          parsedJsonValue = JSON.parse(jsonValueStr);
+        } catch (e) {
+          return c.json({ error: 'INVALID_REQUEST', message: 'Invalid JSON format in json_value' }, 400);
         }
       }
 
@@ -307,17 +319,20 @@ export function registerEntryRoutes(app: AppType) {
       let blobValue: ArrayBuffer | null = null;
       let filename: string | undefined = undefined;
 
-      if (file) {
+      if (hasFile && file) {
         // Handle different File object types from various JavaScript environments
         if (typeof file === 'string') {
           // Binary data as string (Miniflare/workerd FormData parser quirk)
           const str = file as string;
-          const buf = new Uint8Array(str.length);
-          for (let i = 0; i < str.length; i++) {
-            buf[i] = str.charCodeAt(i);
+          // Check if it is empty string which might mean no file in some contexts
+          if (str.length > 0) {
+             const buf = new Uint8Array(str.length);
+             for (let i = 0; i < str.length; i++) {
+               buf[i] = str.charCodeAt(i);
+             }
+             blobValue = buf.buffer;
+             filename = undefined;
           }
-          blobValue = buf.buffer;
-          filename = undefined;
         } else if (file instanceof ArrayBuffer) {
           blobValue = file;
           filename = undefined;
@@ -332,6 +347,30 @@ export function registerEntryRoutes(app: AppType) {
           blobValue = await new Response(file as any).arrayBuffer();
           filename = (file as any).name;
         }
+      }
+
+      // Derive Type if missing
+      if (!type) {
+        type = deriveType(parsedJsonValue, blobValue, stringValue);
+      }
+
+      let finalStringValue = stringValue;
+      if (hasJson) {
+        if (typeof parsedJsonValue === 'string') {
+          finalStringValue = parsedJsonValue;
+        } else {
+          finalStringValue = JSON.stringify(parsedJsonValue);
+        }
+      }
+
+      // Validate string value if present (and not JSON derived which we assume is correct based on parsed value)
+      // Although user might want to force a type for JSON value that isn't compatible?
+      // E.g. json_value=123, type=boolean -> validation fail.
+      if (finalStringValue !== null && !blobValue) {
+         const error = validateEntryValue(type, finalStringValue);
+         if (error) {
+           return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+         }
       }
 
       // Origin tracking
@@ -350,7 +389,7 @@ export function registerEntryRoutes(app: AppType) {
             c.env,
             existing.id,
             key,
-            stringValue,
+            finalStringValue,
             blobValue,
             type,
             filename,
@@ -370,7 +409,7 @@ export function registerEntryRoutes(app: AppType) {
         user.id,
         key,
         type,
-        stringValue,
+        finalStringValue,
         blobValue,
         filename,
         collectionId,
@@ -442,21 +481,29 @@ export function registerEntryRoutes(app: AppType) {
     try {
       const formData = await c.req.formData();
       const key = formData.get('key') as string;
-      const type = formData.get('type') as string;
+      let type = formData.get('type') as string | null;
       const stringValue = formData.get('string_value') as string | null;
+      const jsonValueStr = formData.get('json_value') as string | null;
       const file = formData.get('file') as File | null;
       const collectionIdStr = formData.get('collection_id') as string | null;
       const metadata = formData.get('metadata') as string | null;
 
-      if (!type) {
-        return c.json({ error: 'INVALID_REQUEST', message: 'Type is required' }, 400);
+      // Enforce exclusivity if more than one value provided
+      const hasString = stringValue !== null && stringValue !== undefined;
+      const hasJson = jsonValueStr !== null && jsonValueStr !== undefined;
+      const hasFile = file !== null && file !== undefined && (typeof file !== 'string' || file.length > 0);
+
+      const count = (hasString ? 1 : 0) + (hasJson ? 1 : 0) + (hasFile ? 1 : 0);
+      if (count > 1) {
+        return c.json({ error: 'INVALID_REQUEST', message: 'Cannot provide more than one of string_value, json_value, or file' }, 400);
       }
 
-      // Validate string value if present and we're not uploading a file
-      if (stringValue !== null && !file) {
-        const error = validateEntryValue(type, stringValue);
-        if (error) {
-           return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+      let parsedJsonValue: any = undefined;
+      if (hasJson && jsonValueStr) {
+        try {
+          parsedJsonValue = JSON.parse(jsonValueStr);
+        } catch (e) {
+          return c.json({ error: 'INVALID_REQUEST', message: 'Invalid JSON format in json_value' }, 400);
         }
       }
 
@@ -476,19 +523,21 @@ export function registerEntryRoutes(app: AppType) {
 
       let blobValue: ArrayBuffer | null = null;
       let filename: string | undefined = undefined;
-      let finalStringValue = stringValue;
+      let finalStringValue: string | null | undefined = undefined;
 
-      if (file) {
+      if (hasFile && file) {
         // Handle different File object types from various JavaScript environments
         if (typeof file === 'string') {
           // Binary data as string (Miniflare/workerd FormData parser quirk)
           const str = file as string;
-          const buf = new Uint8Array(str.length);
-          for (let i = 0; i < str.length; i++) {
-            buf[i] = str.charCodeAt(i);
+          if (str.length > 0) {
+            const buf = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) {
+                buf[i] = str.charCodeAt(i);
+            }
+            blobValue = buf.buffer;
+            filename = undefined;
           }
-          blobValue = buf.buffer;
-          filename = undefined;
         } else if (file instanceof ArrayBuffer) {
           blobValue = file;
           filename = undefined;
@@ -504,21 +553,47 @@ export function registerEntryRoutes(app: AppType) {
           filename = (file as any).name;
         }
         finalStringValue = null;
+      } else if (hasJson) {
+         if (typeof parsedJsonValue === 'string') {
+            finalStringValue = parsedJsonValue;
+         } else {
+            finalStringValue = JSON.stringify(parsedJsonValue);
+         }
+         blobValue = null;
+      } else if (hasString) {
+         finalStringValue = stringValue;
+         blobValue = null;
       } else {
-        if (stringValue === null) {
-          finalStringValue = null;
-          blobValue = null;
-        } else if (stringValue === '' && existing.blob_value) {
-          finalStringValue = null;
-          blobValue = null;
-        }
+         finalStringValue = undefined;
+         blobValue = undefined;
+      }
+
+      // If type is not provided, we might need to derive it if we are changing content.
+      if (!type && count > 0) {
+         type = deriveType(
+             hasJson ? parsedJsonValue : undefined,
+             blobValue,
+             hasString ? stringValue : null
+         );
+      } else if (!type) {
+         // Default to existing if not provided and not derived
+         type = existing.type;
+      }
+
+      // Validate value
+      if (finalStringValue !== null && finalStringValue !== undefined && !blobValue) {
+           const checkType = type || existing.type;
+           const error = validateEntryValue(checkType, finalStringValue);
+           if (error) {
+               return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+           }
       }
 
       const entry = await updateEntry(
         c.env,
         id,
         targetKey,
-        finalStringValue || null,
+        finalStringValue,
         blobValue,
         type,
         filename,

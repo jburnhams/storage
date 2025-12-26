@@ -22,7 +22,7 @@ import {
   UpdateEntryJsonRequestSchema,
   type CreateEntryJsonRequest
 } from '../json_schemas';
-import { validateEntryValue } from '../utils/validation';
+import { validateEntryValue, deriveType } from '../utils/validation';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -35,7 +35,7 @@ const createEntryJsonRoute = createRoute({
   path: '/api/storage/entry/json',
   tags: ['Storage'],
   summary: 'Create or update an entry or multiple entries (JSON)',
-  description: 'Create or update entries using JSON payload. Accepts a single object or an array of objects. If an entry with the same key exists in the specified collection, it will be overwritten. Use "blob_value" for base64 encoded binary data.',
+  description: 'Create or update entries using JSON payload. Accepts a single object or an array of objects. If an entry with the same key exists in the specified collection, it will be overwritten. Use "blob_value" for base64 encoded binary data. Use "json_value" for raw JSON objects.',
   middleware: [requireAuth] as any,
   request: {
     body: {
@@ -80,7 +80,7 @@ const updateEntryJsonRoute = createRoute({
   path: '/api/storage/entry/{id}/json',
   tags: ['Storage'],
   summary: 'Update an entry (JSON)',
-  description: 'Update an entry using JSON payload. Use "blob_value" for base64 encoded binary data.',
+  description: 'Update an entry using JSON payload. Use "blob_value" for base64 encoded binary data. Use "json_value" for raw JSON objects.',
   middleware: [requireAuth] as any,
   request: {
     params: IdParamSchema,
@@ -150,8 +150,10 @@ export function registerEntryJsonRoutes(app: AppType) {
       const origin = c.req.header('Origin');
 
       // Helper function to process a single entry
-      const processEntry = async (item: CreateEntryJsonRequest) => {
+      const processEntry = async (item: any) => {
           let blobValue: ArrayBuffer | null = null;
+          let stringValue: string | null = null;
+
           if (item.blob_value) {
             try {
               // Decode base64
@@ -165,11 +167,25 @@ export function registerEntryJsonRoutes(app: AppType) {
             } catch (e) {
               throw new Error('Invalid base64 string in blob_value');
             }
+          } else if (item.json_value !== undefined && item.json_value !== null) {
+              if (typeof item.json_value === 'string') {
+                  stringValue = item.json_value;
+              } else {
+                  stringValue = JSON.stringify(item.json_value);
+              }
+          } else if (item.string_value !== undefined) {
+              stringValue = item.string_value;
+          }
+
+          // Derive Type if missing
+          let type = item.type;
+          if (!type) {
+             type = deriveType(item.json_value, blobValue, stringValue);
           }
 
           // Validate string value
-          if (item.string_value && !blobValue) {
-            const error = validateEntryValue(item.type, item.string_value);
+          if (stringValue && !blobValue) {
+            const error = validateEntryValue(type, stringValue);
             if (error) {
                throw new Error(error);
             }
@@ -188,9 +204,9 @@ export function registerEntryJsonRoutes(app: AppType) {
                     c.env,
                     existing.id,
                     item.key,
-                    item.string_value ?? null,
+                    stringValue,
                     blobValue,
-                    item.type,
+                    type,
                     item.filename,
                     item.collection_id,
                     item.metadata
@@ -207,8 +223,8 @@ export function registerEntryJsonRoutes(app: AppType) {
             c.env,
             user.id,
             item.key,
-            item.type,
-            item.string_value ?? null,
+            type,
+            stringValue,
             blobValue,
             item.filename,
             item.collection_id ?? null,
@@ -283,12 +299,9 @@ export function registerEntryJsonRoutes(app: AppType) {
       const payload = c.req.valid('json');
 
       const targetKey = payload.key || existing.key;
-      // Default to existing type if not provided. If provided, use it.
-      // But updateEntry storage function requires type.
-      const targetType = payload.type || existing.type;
 
       let blobValue: ArrayBuffer | null = null;
-      let stringValue: string | null | undefined = payload.string_value;
+      let stringValue: string | null | undefined = undefined;
 
       if (payload.blob_value) {
         try {
@@ -303,15 +316,29 @@ export function registerEntryJsonRoutes(app: AppType) {
           return c.json({ error: 'INVALID_REQUEST', message: 'Invalid base64 string in blob_value' }, 400);
         }
         stringValue = null; // Enforce exclusive
+      } else if (payload.json_value !== undefined && payload.json_value !== null) {
+          if (typeof payload.json_value === 'string') {
+             stringValue = payload.json_value;
+          } else {
+             stringValue = JSON.stringify(payload.json_value);
+          }
+          blobValue = null;
       } else if (payload.string_value !== undefined && payload.string_value !== null) {
-          // If string value provided, blob must be null
+          stringValue = payload.string_value;
           blobValue = null;
       } else {
-          // Both missing/null in payload
-          // If we are strictly updating metadata/key, we pass nulls to updateEntry?
-          // updateEntry logic: if both null, we preserve content.
-          blobValue = null;
-          stringValue = null;
+          // No content update
+          stringValue = undefined;
+          blobValue = undefined;
+      }
+
+      // Default to existing type if not provided. If provided, use it.
+      // But updateEntry storage function requires type.
+      let targetType = payload.type || existing.type;
+
+      // Derive Type if missing and we are changing content
+      if (!payload.type && (blobValue || stringValue !== undefined)) {
+         targetType = deriveType(payload.json_value, blobValue, stringValue ?? null);
       }
 
       // Validate string value if we are updating it
