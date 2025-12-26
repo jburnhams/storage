@@ -1,8 +1,9 @@
 import { Miniflare } from "miniflare";
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync, existsSync } from "fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { build } from "esbuild";
 
 export interface TestEnv {
   DB: D1Database;
@@ -46,6 +47,35 @@ export function applyWranglerMigrations(persistPath: string) {
     console.error("Failed to apply migrations:", error);
     throw error;
   }
+}
+
+/**
+ * Bundle the worker for testing
+ */
+export async function bundleWorker(): Promise<string> {
+  const outdir = join(process.cwd(), ".test-build");
+
+  if (!existsSync(outdir)) {
+    mkdirSync(outdir, { recursive: true });
+  }
+
+  await build({
+    entryPoints: [join(process.cwd(), "src", "worker.ts")],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    outfile: join(outdir, "worker.js"),
+    mainFields: ["browser", "module", "main"],
+    external: ["cloudflare:*"],
+    alias: {
+        "buffer": "buffer",
+    },
+    define: {
+        "process.env.NODE_ENV": '"test"'
+    }
+  });
+
+  return readFileSync(join(outdir, "worker.js"), "utf-8");
 }
 
 /**
