@@ -116,7 +116,7 @@ describe("Collection API Integration", () => {
         const col = list[0];
         const secret = col.secret;
 
-        const publicRes = await mf.dispatchFetch(`http://localhost/api/collections/${col.id}/export?secret=${secret}`);
+        const publicRes = await mf.dispatchFetch(`http://localhost/api/collections/${col.id}?secret=${secret}`);
         expect(publicRes.status).toBe(200);
         const data = await publicRes.json() as any;
         expect(data.name).toBe(col.name);

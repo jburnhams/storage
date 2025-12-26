@@ -9,7 +9,6 @@ import {
   listCollections,
   updateCollection,
   deleteCollection,
-  getCollectionBySecret,
   listEntries,
   getEntryById,
 } from '../storage';
@@ -17,12 +16,13 @@ import { getUserById } from '../session';
 import JSZip from 'jszip';
 import {
   CollectionResponseSchema,
+  CollectionWithContentsResponseSchema,
   CollectionListResponseSchema,
   CreateCollectionRequestSchema,
   UpdateCollectionRequestSchema,
   IdParamSchema,
   ErrorResponseSchema,
-  ExportCollectionQuerySchema,
+  GetCollectionQuerySchema,
 } from '../schemas';
 import { SIMPLE_TYPES } from '../utils/validation';
 
@@ -108,16 +108,17 @@ const getCollectionRoute = createRoute({
   path: '/api/collections/{id}',
   tags: ['Collections'],
   summary: 'Get a collection by ID',
-  middleware: [requireAuth] as any,
+  middleware: [attemptAuth] as any,
   request: {
     params: IdParamSchema,
+    query: GetCollectionQuerySchema,
   },
   responses: {
     200: {
       description: 'Collection details',
       content: {
         'application/json': {
-          schema: CollectionResponseSchema,
+          schema: CollectionWithContentsResponseSchema,
         },
       },
     },
@@ -359,52 +360,6 @@ const downloadCollectionZipRoute = createRoute({
   },
 });
 
-// GET /api/collections/:id/export
-const exportCollectionJsonRoute = createRoute({
-  method: 'get',
-  path: '/api/collections/{id}/export',
-  tags: ['Collections'],
-  summary: 'Export collection as JSON',
-  middleware: [attemptAuth] as any,
-  request: {
-    params: IdParamSchema,
-    query: ExportCollectionQuerySchema,
-  },
-  responses: {
-    200: {
-      description: 'Collection with contents as JSON',
-      content: {
-        'application/json': {
-          schema: z.object({}).passthrough(),
-        },
-      },
-    },
-    401: {
-      description: 'Unauthorized',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: 'Forbidden',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: 'Not found',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-  },
-});
 
 export function registerCollectionRoutes(app: AppType) {
   // GET /api/collections
@@ -433,24 +388,93 @@ export function registerCollectionRoutes(app: AppType) {
 
   // GET /api/collections/:id
   app.openapi(getCollectionRoute, async (c) => {
-    const session = c.get('session')!;
-    const user = await getUserById(session.user_id, c.env);
-    if (!user) {
-      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
-    }
-
+    const session = c.get('session');
     const { id } = c.req.valid('param');
+    const { secret } = c.req.valid('query');
 
     const collection = await getCollection(c.env, id);
     if (!collection) {
       return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
-    if (collection.user_id !== user.id && !user.is_admin) {
+    let isAuthorized = false;
+    let viewingUser: User | null = null;
+
+    // Check session auth
+    if (session) {
+      const user = await getUserById(session.user_id, c.env);
+      if (user) {
+        viewingUser = user;
+        if (collection.user_id === user.id || user.is_admin) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    // Check secret bypass
+    if (!isAuthorized && secret && secret === collection.secret) {
+      isAuthorized = true;
+      // We can create a mock user object representing the owner of the collection for listing purposes,
+      // since we are authorized to see this collection's content.
+      viewingUser = { id: collection.user_id, is_admin: 0 } as User;
+    }
+
+    if (!isAuthorized) {
+      if (!session) {
+        return c.json({ error: 'UNAUTHORIZED', message: 'Authentication required' }, 401);
+      }
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
-    return c.json(collection);
+    const entries = await listEntries(c.env, viewingUser!, undefined, undefined, id);
+    const contents: any[] = [];
+    const baseUrl = new URL(c.req.url).origin;
+
+    for (const entryMeta of entries) {
+      const entry = await getEntryById(c.env, entryMeta.id);
+      if (!entry) continue;
+
+      if (entry.blob_value) {
+        contents.push({
+          key: entry.key,
+          type: 'file',
+          mime_type: entry.type,
+          url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`,
+        });
+      } else if (SIMPLE_TYPES.includes(entry.type) || entry.type === 'application/json') {
+        let parsedValue: any = entry.string_value;
+        if (entry.string_value !== null) {
+          if (entry.type === 'application/json') {
+            try {
+              parsedValue = JSON.parse(entry.string_value);
+            } catch (e) {
+              parsedValue = entry.string_value; // Fallback
+            }
+          } else if (entry.type === 'boolean') {
+            parsedValue = entry.string_value === 'true';
+          } else if (entry.type === 'integer' || entry.type === 'float') {
+            parsedValue = Number(entry.string_value);
+          }
+        }
+
+        contents.push({
+          key: entry.key,
+          type: 'json',
+          value: parsedValue,
+        });
+      } else {
+        contents.push({
+          key: entry.key,
+          type: 'value',
+          value: entry.string_value,
+        });
+      }
+    }
+
+    return c.json({
+      ...collection,
+      contents,
+    });
   });
 
   // PUT /api/collections/:id
@@ -633,101 +657,4 @@ export function registerCollectionRoutes(app: AppType) {
     }
   });
 
-  // GET /api/collections/:id/export
-  app.openapi(exportCollectionJsonRoute, async (c) => {
-    const session = c.get('session');
-    const { id } = c.req.valid('param');
-    const { secret } = c.req.valid('query');
-
-    const collection = await getCollection(c.env, id);
-    if (!collection) {
-      return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
-    }
-
-    let isAuthorized = false;
-    let viewingUser: User | null = null;
-
-    // Check session auth
-    if (session) {
-        const user = await getUserById(session.user_id, c.env);
-        if (user) {
-             viewingUser = user;
-             if (collection.user_id === user.id || user.is_admin) {
-                 isAuthorized = true;
-             }
-        }
-    }
-
-    // Check secret bypass
-    if (!isAuthorized && secret && secret === collection.secret) {
-        isAuthorized = true;
-        // Logic requires a user object for listEntries.
-        // If bypassing, we can mock a user or update listEntries to handle no user (if we pass just collectionId).
-        // listEntries implementation:
-        // if (!user.is_admin) { query += " AND k.user_id = ?"; params.push(user.id); }
-        // We need to bypass this user check if we are accessing via secret.
-        // We can create a mock user object representing the owner of the collection for listing purposes,
-        // since we are authorized to see this collection's content.
-        viewingUser = { id: collection.user_id, is_admin: 0 } as User;
-    }
-
-    if (!isAuthorized) {
-        if (!session) {
-             return c.json({ error: 'UNAUTHORIZED', message: 'Authentication required' }, 401);
-        }
-        return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
-    }
-
-    // viewingUser is guaranteed to be set if isAuthorized is true (either real user or mocked owner)
-    const entries = await listEntries(c.env, viewingUser!, undefined, undefined, id);
-    const contents: any[] = [];
-    const baseUrl = new URL(c.req.url).origin;
-
-    for (const entryMeta of entries) {
-      const entry = await getEntryById(c.env, entryMeta.id);
-      if (!entry) continue;
-
-      if (entry.blob_value) {
-        contents.push({
-          key: entry.key,
-          type: 'file',
-          mime_type: entry.type,
-          url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`,
-        });
-      } else if (SIMPLE_TYPES.includes(entry.type) || entry.type === 'application/json') {
-        let parsedValue: any = entry.string_value;
-        if (entry.string_value !== null) {
-            if (entry.type === 'application/json') {
-                try {
-                    parsedValue = JSON.parse(entry.string_value);
-                } catch(e) {
-                    parsedValue = entry.string_value; // Fallback
-                }
-            } else if (entry.type === 'boolean') {
-                parsedValue = entry.string_value === 'true';
-            } else if (entry.type === 'integer' || entry.type === 'float') {
-                parsedValue = Number(entry.string_value);
-            }
-            // date and timestamp are strings in JSON anyway
-        }
-
-        contents.push({
-          key: entry.key,
-          type: 'json',
-          value: parsedValue,
-        });
-      } else {
-        contents.push({
-          key: entry.key,
-          type: 'value',
-          value: entry.string_value,
-        });
-      }
-    }
-
-    return c.json({
-      ...collection,
-      contents,
-    });
-  });
 }

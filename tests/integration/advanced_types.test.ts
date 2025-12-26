@@ -115,7 +115,7 @@ describe('Advanced Types Integration', () => {
     expect(updateRes.status).toBe(200);
 
     // Export Collection
-    const exportRes = await mf.dispatchFetch(`http://localhost:8787/api/collections/${col.id}/export`, {
+    const exportRes = await mf.dispatchFetch(`http://localhost:8787/api/collections/${col.id}`, {
       method: 'GET',
       headers: {
         'Cookie': SESSION_COOKIE

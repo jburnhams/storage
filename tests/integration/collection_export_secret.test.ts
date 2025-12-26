@@ -56,7 +56,7 @@ describe("Collection Export & Secret Bypass", () => {
     expect(collection.id).toBeDefined();
 
     // 2. User tries to export
-    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export`, {
+    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}`, {
       headers: { Cookie: userCookie },
     });
 
@@ -71,7 +71,7 @@ describe("Collection Export & Secret Bypass", () => {
     const collection = await createCollection(userCookie, "User Collection");
 
     // 2. Admin tries to export
-    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export`, {
+    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}`, {
       headers: { Cookie: adminCookie },
     });
 
@@ -85,7 +85,7 @@ describe("Collection Export & Secret Bypass", () => {
     const collection = await createCollection(adminCookie, "Admin Collection");
 
     // 2. User tries to export
-    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export`, {
+    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}`, {
       headers: { Cookie: userCookie },
     });
 
@@ -99,7 +99,7 @@ describe("Collection Export & Secret Bypass", () => {
     expect(secret).toBeDefined();
 
     // 2. Anonymous request with secret
-    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export?secret=${secret}`, {
+    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}?secret=${secret}`, {
         method: 'GET'
     });
 
@@ -114,7 +114,7 @@ describe("Collection Export & Secret Bypass", () => {
     const collection = await createCollection(userCookie, "Protected Collection");
 
     // 2. Anonymous request with wrong secret
-    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export?secret=wrongsecret`, {
+    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}?secret=wrongsecret`, {
         method: 'GET'
     });
 
@@ -139,7 +139,7 @@ describe("Collection Export & Secret Bypass", () => {
     const collection = await createCollection(adminCookie, "Admin Collection");
 
     // 2. User tries to export with wrong secret
-    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export?secret=wrong`, {
+    const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}?secret=wrong`, {
       headers: { Cookie: userCookie },
     });
 
@@ -153,7 +153,7 @@ describe("Collection Export & Secret Bypass", () => {
       const secret = collection.secret;
 
       // 2. User tries to export with VALID secret
-      const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}/export?secret=${secret}`, {
+      const res = await mf.dispatchFetch(`${workerUrl}/api/collections/${collection.id}?secret=${secret}`, {
         headers: { Cookie: userCookie },
       });
 
