@@ -20,6 +20,7 @@ import {
   IdParamSchema,
   ErrorResponseSchema,
 } from '../schemas';
+import { validateEntryValue } from '../utils/validation';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -286,6 +287,14 @@ export function registerEntryRoutes(app: AppType) {
         return c.json({ error: 'INVALID_REQUEST', message: 'Key and Type are required' }, 400);
       }
 
+      // Validate string value if present
+      if (stringValue !== null && !file) {
+        const error = validateEntryValue(type, stringValue);
+        if (error) {
+          return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+        }
+      }
+
       let collectionId: number | null = null;
       if (collectionIdStr) {
         collectionId = parseInt(collectionIdStr, 10);
@@ -412,6 +421,14 @@ export function registerEntryRoutes(app: AppType) {
 
       if (!type) {
         return c.json({ error: 'INVALID_REQUEST', message: 'Type is required' }, 400);
+      }
+
+      // Validate string value if present and we're not uploading a file
+      if (stringValue !== null && !file) {
+        const error = validateEntryValue(type, stringValue);
+        if (error) {
+           return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+        }
       }
 
       const targetKey = key || existing.key;

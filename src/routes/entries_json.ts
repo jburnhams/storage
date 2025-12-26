@@ -19,6 +19,7 @@ import {
   CreateEntryJsonRequestSchema,
   UpdateEntryJsonRequestSchema
 } from '../json_schemas';
+import { validateEntryValue } from '../utils/validation';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -160,6 +161,14 @@ export function registerEntryJsonRoutes(app: AppType) {
         }
       }
 
+      // Validate string value
+      if (payload.string_value && !blobValue) {
+        const error = validateEntryValue(payload.type, payload.string_value);
+        if (error) {
+           return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+        }
+      }
+
       // Origin tracking
       const origin = c.req.header('Origin');
 
@@ -234,6 +243,14 @@ export function registerEntryJsonRoutes(app: AppType) {
           // updateEntry logic: if both null, we preserve content.
           blobValue = null;
           stringValue = null;
+      }
+
+      // Validate string value if we are updating it
+      if (stringValue && !blobValue) {
+          const error = validateEntryValue(targetType, stringValue);
+          if (error) {
+              return c.json({ error: 'INVALID_REQUEST', message: error }, 400);
+          }
       }
 
       const entry = await updateEntry(

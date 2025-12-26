@@ -518,6 +518,11 @@ function EntryModal({ entry, onClose, onSave, currentPath, collectionId }: any) 
                         <select value={type} onChange={e => setType(e.target.value)}>
                             <option value="text/plain">Text</option>
                             <option value="application/json">JSON</option>
+                            <option value="boolean">Boolean</option>
+                            <option value="integer">Integer</option>
+                            <option value="float">Float</option>
+                            <option value="date">Date</option>
+                            <option value="timestamp">Timestamp</option>
                             <option value="application/octet-stream">File/Blob</option>
                             <option value="image/png">Image (PNG)</option>
                             <option value="image/jpeg">Image (JPEG)</option>
@@ -531,6 +536,54 @@ function EntryModal({ entry, onClose, onSave, currentPath, collectionId }: any) 
                                 value={stringValue}
                                 onChange={e => setStringValue(e.target.value)}
                                 rows={10}
+                            />
+                        </div>
+                    )}
+
+                    {type === "boolean" && (
+                         <div className="form-group">
+                            <label>Value</label>
+                            <select
+                                value={stringValue}
+                                onChange={e => setStringValue(e.target.value)}
+                            >
+                                <option value="">Select...</option>
+                                <option value="true">True</option>
+                                <option value="false">False</option>
+                            </select>
+                        </div>
+                    )}
+
+                    {(type === "integer" || type === "float") && (
+                         <div className="form-group">
+                            <label>Value</label>
+                            <input
+                                type="number"
+                                step={type === "float" ? "any" : "1"}
+                                value={stringValue}
+                                onChange={e => setStringValue(e.target.value)}
+                            />
+                        </div>
+                    )}
+
+                    {type === "date" && (
+                         <div className="form-group">
+                            <label>Value</label>
+                            <input
+                                type="date"
+                                value={stringValue}
+                                onChange={e => setStringValue(e.target.value)}
+                            />
+                        </div>
+                    )}
+
+                    {type === "timestamp" && (
+                         <div className="form-group">
+                            <label>Value</label>
+                            <input
+                                type="datetime-local"
+                                value={stringValue}
+                                onChange={e => setStringValue(e.target.value)}
                             />
                         </div>
                     )}
