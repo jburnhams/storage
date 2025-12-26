@@ -234,9 +234,12 @@ describe("Worker HTTP Integration Tests", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json() as any;
-      expect(data.success).toBe(true);
 
-      // Verify user was promoted
+      // Verify response contains the promoted user
+      expect(data.email).toBe("user@test.com");
+      expect(data.is_admin).toBe(true);
+
+      // Verify user was promoted in database
       const user = await db
         .prepare(`SELECT * FROM users WHERE email = ?`)
         .bind("user@test.com")

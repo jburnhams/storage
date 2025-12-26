@@ -90,6 +90,7 @@ describe("Multipart Upload Integration Tests", () => {
     const blob = new Blob([smallData], { type: "application/octet-stream" });
     formData.append("file", blob, "small_file.bin");
 
+    // Serialize FormData for Miniflare
     const payload = new Response(formData);
     const contentType = payload.headers.get("Content-Type");
     const bodyArrayBuffer = await payload.arrayBuffer();
@@ -127,7 +128,7 @@ describe("Multipart Upload Integration Tests", () => {
     const blob = new Blob([largeData], { type: "application/octet-stream" });
     formData.append("file", blob, "large_file.bin");
 
-    // Serialize FormData using Response to get correct boundary and body
+    // Serialize FormData for Miniflare
     const payload = new Response(formData);
     const contentType = payload.headers.get("Content-Type");
     const bodyArrayBuffer = await payload.arrayBuffer();

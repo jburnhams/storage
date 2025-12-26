@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { handleRequest } from "../../src/worker";
+import app from "../../src/worker";
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from "cloudflare:test";
 
 describe("Unauthorized Redirect Logic", () => {
@@ -11,7 +11,7 @@ describe("Unauthorized Redirect Logic", () => {
     const redirectUrl = "https://example.com/dashboard";
     const request = new Request(`https://storage.test/api/session?redirect=${encodeURIComponent(redirectUrl)}`);
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(401);
@@ -28,7 +28,7 @@ describe("Unauthorized Redirect Logic", () => {
       }
     });
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(401);
@@ -46,7 +46,7 @@ describe("Unauthorized Redirect Logic", () => {
       }
     });
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(401);
@@ -58,7 +58,7 @@ describe("Unauthorized Redirect Logic", () => {
   it("should not include redirect param if neither query param nor Referer is present", async () => {
     const request = new Request("https://storage.test/api/session");
     const ctx = createExecutionContext();
-    const response = await handleRequest(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(401);
