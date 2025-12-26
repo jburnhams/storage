@@ -114,6 +114,12 @@ export async function attemptAuth(c: Context<{ Bindings: Env; Variables: { sessi
 }
 
 export async function requireAuth(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
+  // Check if session is already present (e.g. from previous middleware or tests)
+  if (c.get('session')) {
+    await next();
+    return;
+  }
+
   const session = await loadSession(c);
 
   if (!session) {

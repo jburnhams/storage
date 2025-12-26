@@ -8,6 +8,7 @@ import {
   getEntryById,
   updateEntry,
   entryToResponse,
+  getEntryInCollection,
 } from '../storage';
 import { getUserById } from '../session';
 import {
@@ -31,8 +32,8 @@ const createEntryJsonRoute = createRoute({
   method: 'post',
   path: '/api/storage/entry/json',
   tags: ['Storage'],
-  summary: 'Create a new entry (JSON)',
-  description: 'Create an entry using JSON payload. Use "blob_value" for base64 encoded binary data.',
+  summary: 'Create or update an entry (JSON)',
+  description: 'Create or update an entry using JSON payload. If an entry with the same key exists in the specified collection, it will be overwritten. Use "blob_value" for base64 encoded binary data.',
   middleware: [requireAuth] as any,
   request: {
     body: {
@@ -171,6 +172,34 @@ export function registerEntryJsonRoutes(app: AppType) {
 
       // Origin tracking
       const origin = c.req.header('Origin');
+
+      // Check for existing entry to overwrite if in a collection
+      if (payload.collection_id !== undefined && payload.collection_id !== null) {
+        const existing = await getEntryInCollection(c.env, payload.key, payload.collection_id);
+        if (existing) {
+             // Check permission to update existing entry
+             if (!user.is_admin && existing.user_id !== user.id) {
+               return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
+             }
+
+             const updated = await updateEntry(
+                c.env,
+                existing.id,
+                payload.key,
+                payload.string_value ?? null,
+                blobValue,
+                payload.type,
+                payload.filename,
+                payload.collection_id,
+                payload.metadata
+              );
+
+              if (!updated) {
+                return c.json({ error: 'UPDATE_FAILED', message: 'Update failed' }, 500);
+              }
+              return c.json(entryToResponse(updated));
+        }
+      }
 
       const entry = await createEntry(
         c.env,

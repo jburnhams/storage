@@ -10,6 +10,7 @@ import {
   deleteEntry,
   listEntries,
   entryToResponse,
+  getEntryInCollection,
 } from '../storage';
 import { getUserById } from '../session';
 import {
@@ -62,8 +63,8 @@ const createEntryRoute = createRoute({
   method: 'post',
   path: '/api/storage/entry',
   tags: ['Storage'],
-  summary: 'Create a new entry (multipart/form-data)',
-  description: 'Upload a file or string value. FormData fields: key (required), type (required), string_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
+  summary: 'Create or update an entry (multipart/form-data)',
+  description: 'Upload a file or string value. If an entry with the same key exists in the specified collection, it will be overwritten. FormData fields: key (required), type (required), string_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
   middleware: [requireAuth] as any,
   responses: {
     200: {
@@ -335,6 +336,34 @@ export function registerEntryRoutes(app: AppType) {
 
       // Origin tracking
       const origin = c.req.header('Origin');
+
+      // Check for existing entry to overwrite if in a collection
+      if (collectionId !== null) {
+        const existing = await getEntryInCollection(c.env, key, collectionId);
+        if (existing) {
+          // Check permission to update existing entry
+          if (!user.is_admin && existing.user_id !== user.id) {
+            return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
+          }
+
+          const updated = await updateEntry(
+            c.env,
+            existing.id,
+            key,
+            stringValue,
+            blobValue,
+            type,
+            filename,
+            collectionId,
+            metadata
+          );
+
+          if (!updated) {
+            return c.json({ error: 'UPDATE_FAILED', message: 'Update failed' }, 500);
+          }
+          return c.json(entryToResponse(updated));
+        }
+      }
 
       const entry = await createEntry(
         c.env,

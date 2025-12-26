@@ -200,7 +200,8 @@ export async function createEntry(
     throw new Error("Failed to create entry");
   }
 
-  return { ...result, ...valueEntry, secret: valueEntry.hash };
+  const { id: _valueId, ...valueRest } = valueEntry;
+  return { ...result, ...valueRest, secret: valueEntry.hash };
 }
 
 export async function getEntryById(env: Env, id: number): Promise<KeyValueEntryJoined | null> {
@@ -315,7 +316,8 @@ export async function updateEntry(
 
     if (!result) return null;
 
-    return { ...result, ...valueEntry, secret: valueEntry.hash };
+    const { id: _valueId, ...valueRest } = valueEntry;
+    return { ...result, ...valueRest, secret: valueEntry.hash };
 }
 
 export async function deleteEntry(env: Env, id: number): Promise<void> {
@@ -456,7 +458,6 @@ export async function deleteCollection(env: Env, id: number): Promise<void> {
  */
 export async function getEntryInCollection(
   env: Env,
-  userId: number,
   key: string,
   collectionId: number | null
 ): Promise<KeyValueEntryJoined | null> {
@@ -464,9 +465,9 @@ export async function getEntryInCollection(
         SELECT k.*, v.hash as secret, v.hash, v.string_value, v.blob_value, v.type, v.is_multipart, v.size
         FROM key_value_entries k
         JOIN value_entries v ON k.value_id = v.id
-        WHERE k.user_id = ? AND k.key = ?
+        WHERE k.key = ?
     `;
-    const params: any[] = [userId, key];
+    const params: any[] = [key];
 
     if (collectionId === null) {
         query += " AND k.collection_id IS NULL";
