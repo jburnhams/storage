@@ -25,6 +25,11 @@ export const CreateEntryJsonRequestSchema = z.object({
   path: ["string_value"] // Attach error to string_value for now
 });
 
+export const BulkCreateEntryJsonRequestSchema = z.union([
+  CreateEntryJsonRequestSchema,
+  z.array(CreateEntryJsonRequestSchema)
+]);
+
 export const UpdateEntryJsonRequestSchema = z.object({
   key: z.string().min(1).optional(),
   type: z.string().optional(),
