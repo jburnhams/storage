@@ -108,7 +108,7 @@ describe("Collection API Integration", () => {
         expect(getRes.status).toBe(404);
     });
 
-    it("should access collection via public secret", async () => {
+    it("should access collection via public secret (export endpoint)", async () => {
          const listRes = await mf.dispatchFetch("http://localhost/api/collections", {
             headers: { "Cookie": `storage_session=${userSessionId}` }
         });
@@ -116,7 +116,7 @@ describe("Collection API Integration", () => {
         const col = list[0];
         const secret = col.secret;
 
-        const publicRes = await mf.dispatchFetch(`http://localhost/api/public/collection?secret=${secret}`);
+        const publicRes = await mf.dispatchFetch(`http://localhost/api/collections/${col.id}/export?secret=${secret}`);
         expect(publicRes.status).toBe(200);
         const data = await publicRes.json() as any;
         expect(data.name).toBe(col.name);
