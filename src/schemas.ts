@@ -35,6 +35,25 @@ export const PromoteAdminRequestSchema = z.object({
 
 // ===== Collection Schemas =====
 
+export const CollectionContentEntrySchema = z.discriminatedUnion('type', [
+  z.object({
+    key: z.string(),
+    type: z.literal('file'),
+    mime_type: z.string(),
+    url: z.string(),
+  }),
+  z.object({
+    key: z.string(),
+    type: z.literal('json'),
+    value: z.any(),
+  }),
+  z.object({
+    key: z.string(),
+    type: z.literal('value'),
+    value: z.string().nullable(),
+  }),
+]);
+
 export const CollectionResponseSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -45,6 +64,10 @@ export const CollectionResponseSchema = z.object({
   updated_at: z.string(),
   metadata: z.string().nullable(),
   origin: z.string().nullable(),
+});
+
+export const CollectionWithContentsResponseSchema = CollectionResponseSchema.extend({
+  contents: z.array(CollectionContentEntrySchema).optional(),
 });
 
 export const CreateCollectionRequestSchema = z.object({
@@ -103,6 +126,10 @@ export const ListEntriesQuerySchema = z.object({
   collection_id: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
   limit: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
   offset: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
+});
+
+export const GetCollectionQuerySchema = z.object({
+  secret: z.string().optional(),
 });
 
 export const GetEntryQuerySchema = z.object({
@@ -176,6 +203,8 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 export type UserResponse = z.infer<typeof UserResponseSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 export type CollectionResponse = z.infer<typeof CollectionResponseSchema>;
+export type CollectionWithContentsResponse = z.infer<typeof CollectionWithContentsResponseSchema>;
+export type CollectionContentEntry = z.infer<typeof CollectionContentEntrySchema>;
 export type EntryResponse = z.infer<typeof EntryResponseSchema>;
 export type CreateEntryRequest = z.infer<typeof CreateEntryRequestSchema>;
 export type UpdateEntryRequest = z.infer<typeof UpdateEntryRequestSchema>;
@@ -183,6 +212,7 @@ export type CreateCollectionRequest = z.infer<typeof CreateCollectionRequestSche
 export type UpdateCollectionRequest = z.infer<typeof UpdateCollectionRequestSchema>;
 export type PromoteAdminRequest = z.infer<typeof PromoteAdminRequestSchema>;
 export type ListEntriesQuery = z.infer<typeof ListEntriesQuerySchema>;
+export type GetCollectionQuery = z.infer<typeof GetCollectionQuerySchema>;
 export type GetEntryQuery = z.infer<typeof GetEntryQuerySchema>;
 export type PublicShareQuery = z.infer<typeof PublicShareQuerySchema>;
 export type ExportCollectionQuery = z.infer<typeof ExportCollectionQuerySchema>;
