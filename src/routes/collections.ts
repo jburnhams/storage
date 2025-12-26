@@ -24,6 +24,7 @@ import {
   ErrorResponseSchema,
   ExportCollectionQuerySchema,
 } from '../schemas';
+import { SIMPLE_TYPES } from '../utils/validation';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -692,6 +693,28 @@ export function registerCollectionRoutes(app: AppType) {
           type: 'file',
           mime_type: entry.type,
           url: `${baseUrl}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.hash}`,
+        });
+      } else if (SIMPLE_TYPES.includes(entry.type) || entry.type === 'application/json') {
+        let parsedValue: any = entry.string_value;
+        if (entry.string_value !== null) {
+            if (entry.type === 'application/json') {
+                try {
+                    parsedValue = JSON.parse(entry.string_value);
+                } catch(e) {
+                    parsedValue = entry.string_value; // Fallback
+                }
+            } else if (entry.type === 'boolean') {
+                parsedValue = entry.string_value === 'true';
+            } else if (entry.type === 'integer' || entry.type === 'float') {
+                parsedValue = Number(entry.string_value);
+            }
+            // date and timestamp are strings in JSON anyway
+        }
+
+        contents.push({
+          key: entry.key,
+          type: 'json',
+          value: parsedValue,
         });
       } else {
         contents.push({
