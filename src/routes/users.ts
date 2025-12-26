@@ -254,8 +254,8 @@ export function registerUserRoutes(app: AppType) {
     const { email } = c.req.valid('json');
 
     try {
-      const user = await promoteUserToAdmin(email, c.env);
-      return c.json(userToResponse(user));
+      await promoteUserToAdmin(email, c.env);
+      return c.json({ success: true });
     } catch (error) {
       return c.json(
         {
@@ -265,5 +265,10 @@ export function registerUserRoutes(app: AppType) {
         404
       );
     }
+  });
+
+  // Handle unsupported methods for /api/admin/promote
+  app.get('/api/admin/promote', (c) => {
+    return c.json({ error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' }, 405);
   });
 }

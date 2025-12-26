@@ -65,16 +65,17 @@ export function createApp() {
     const accept = c.req.header('Accept');
     const path = new URL(c.req.url).pathname;
 
-    // Serve frontend for root path or when Accept header indicates HTML
+    // Serve frontend for root path, index.html, or when Accept header indicates HTML
     const isRootPath = path === '/';
+    const isIndexHtml = path === '/index.html';
     const wantsHtml = accept?.includes('text/html');
     const isApiRoute = path.startsWith('/api/') || path.startsWith('/auth/');
 
-    if ((isRootPath || wantsHtml) && !isApiRoute) {
+    if ((isRootPath || isIndexHtml || wantsHtml) && !isApiRoute) {
       return renderFrontend();
     }
 
-    return c.notFound();
+    return c.text('Not found', 404);
   });
 
   return app;

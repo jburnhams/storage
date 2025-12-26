@@ -190,6 +190,17 @@ export async function promoteUserToAdmin(
   email: string,
   env: Env
 ): Promise<void> {
+  // First check if user exists
+  const user = await env.DB.prepare(
+    `SELECT * FROM users WHERE email = ?`
+  )
+    .bind(email)
+    .first<User>();
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
   const now = new Date().toISOString();
   await env.DB.prepare(
     `UPDATE users SET is_admin = 1, updated_at = ? WHERE email = ?`

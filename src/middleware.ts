@@ -136,10 +136,10 @@ export async function requireAdmin(c: Context<{ Bindings: Env; Variables: { sess
     return createUnauthorizedResponse(c, 'Authentication required');
   }
 
-  const { isUserAdmin } = await import('./session');
-  const isAdmin = await isUserAdmin(c.env.DB, sessionContext.user_id);
+  const { getUserById, isUserAdmin } = await import('./session');
+  const user = await getUserById(sessionContext.user_id, c.env);
 
-  if (!isAdmin) {
+  if (!user || !isUserAdmin(user)) {
     return c.json({ error: 'FORBIDDEN', message: 'Admin access required' }, 403);
   }
 
