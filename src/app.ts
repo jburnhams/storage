@@ -6,6 +6,7 @@ import type { SessionContext } from './middleware';
 import { registerAuthRoutes } from './routes/auth';
 import { registerUserRoutes } from './routes/users';
 import { registerEntryRoutes } from './routes/entries';
+import { registerEntryJsonRoutes } from './routes/entries_json';
 import { registerCollectionRoutes } from './routes/collections';
 import { registerBulkRoutes, registerPublicRoutes } from './routes/bulk';
 import { renderFrontend } from './frontend';
@@ -53,6 +54,7 @@ export function createApp() {
   registerAuthRoutes(app);
   registerUserRoutes(app);
   registerEntryRoutes(app);
+  registerEntryJsonRoutes(app);
   registerCollectionRoutes(app);
   registerBulkRoutes(app);
   registerPublicRoutes(app);
