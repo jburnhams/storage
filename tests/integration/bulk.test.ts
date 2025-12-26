@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Miniflare } from "miniflare";
-import { createMiniflareInstance, seedTestData } from "./setup";
-import { readFileSync, rmSync } from "fs";
-import { join } from "path";
+import { createMiniflareInstance, seedTestData, bundleWorker } from "./setup";
+import { rmSync } from "fs";
 import { FormData } from "undici"; // Explicitly use undici FormData if needed, but fetch normally handles it
 
 describe("Bulk Operations Integration", () => {
@@ -12,25 +11,7 @@ describe("Bulk Operations Integration", () => {
     const userSessionId = "test-session-user";
 
     beforeAll(async () => {
-        const esbuild = await import("esbuild");
-
-        const result = await esbuild.build({
-            entryPoints: ["src/worker.ts"],
-            bundle: true,
-            format: "esm",
-            platform: "browser",
-            mainFields: ["browser", "module", "main"],
-            write: false,
-            external: ["cloudflare:workers"],
-            alias: {
-                "buffer": "buffer",
-            },
-            define: {
-                "process.env.NODE_ENV": '"test"'
-            }
-        });
-
-        const scriptContent = result.outputFiles[0].text;
+        const scriptContent = await bundleWorker();
 
         const instance = await createMiniflareInstance({ script: scriptContent });
         mf = instance.mf;

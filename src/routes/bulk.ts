@@ -42,7 +42,7 @@ const bulkDownloadRoute = createRoute({
       description: 'ZIP file',
       content: {
         'application/zip': {
-          schema: z.instanceof(Blob),
+          schema: z.string().openapi({ format: 'binary' }),
         },
       },
     },
@@ -172,7 +172,7 @@ const publicShareRoute = createRoute({
           schema: EntryResponseSchema,
         },
         'application/octet-stream': {
-          schema: z.instanceof(Blob),
+          schema: z.string().openapi({ format: 'binary' }),
         },
       },
     },

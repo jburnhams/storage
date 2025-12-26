@@ -1,42 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { Miniflare } from "miniflare";
-import { build } from "esbuild";
-import { readFileSync, mkdirSync, existsSync } from "fs";
-import { join } from "path";
 import {
   createMiniflareInstance,
   cleanDatabase,
   seedTestData,
+  bundleWorker,
 } from "./setup";
-
-/**
- * Bundle the worker for testing
- */
-async function bundleWorker(): Promise<string> {
-  const outdir = join(process.cwd(), ".test-build");
-
-  if (!existsSync(outdir)) {
-    mkdirSync(outdir, { recursive: true });
-  }
-
-  await build({
-    entryPoints: [join(process.cwd(), "src", "worker.ts")],
-    bundle: true,
-    format: "esm",
-    platform: "browser",
-    outfile: join(outdir, "worker.js"),
-    mainFields: ["browser", "module", "main"],
-    external: ["cloudflare:*"],
-    alias: {
-        "buffer": "buffer",
-    },
-    define: {
-        "process.env.NODE_ENV": '"test"'
-    }
-  });
-
-  return readFileSync(join(outdir, "worker.js"), "utf-8");
-}
 
 describe("Storage Lifecycle Integration Tests", () => {
   let mf: Miniflare;
