@@ -88,23 +88,37 @@ export async function exchangeCodeForToken(
   redirectUri: string,
   env: Env
 ): Promise<GoogleTokenResponse> {
+  const params = {
+    code: code,
+    client_id: env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code",
+  };
+
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      code: code,
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }).toString(),
+    body: new URLSearchParams(params).toString(),
   });
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Failed to exchange code for token: ${error}`);
+
+    // Mask sensitive fields for logging
+    const debugParams = { ...params };
+    const mask = (str: string | undefined) => {
+        if (!str) return "undefined";
+        if (str.length <= 6) return "***";
+        return str.substring(0, 3) + "..." + str.substring(str.length - 3);
+    };
+
+    debugParams.code = mask(debugParams.code);
+    debugParams.client_secret = mask(debugParams.client_secret);
+
+    throw new Error(`Failed to exchange code for token: ${error}\nRequest params: ${JSON.stringify(debugParams, null, 2)}`);
   }
 
   return await response.json();

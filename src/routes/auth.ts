@@ -127,9 +127,8 @@ export function registerAuthRoutes(app: AppType) {
       const redirectUri = getRedirectUri(c.req.raw);
       const tokens = await exchangeCodeForToken(
         code,
-        c.env.GOOGLE_CLIENT_ID,
-        c.env.GOOGLE_CLIENT_SECRET,
-        redirectUri
+        redirectUri,
+        c.env
       );
 
       // Fetch user info
