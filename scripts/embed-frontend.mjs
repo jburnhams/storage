@@ -10,6 +10,12 @@ const frontendRoot = resolve(projectRoot, "frontend");
 const distDir = resolve(frontendRoot, "dist");
 const outputFile = resolve(projectRoot, "src/frontend/assets.ts");
 
+// Generate build metadata
+const metadataFile = resolve(frontendRoot, "src/build-metadata.json");
+const timestamp = new Date().toISOString();
+writeFileSync(metadataFile, JSON.stringify({ timestamp }, null, 2));
+console.log(`Generated build metadata at ${relative(projectRoot, metadataFile)}`);
+
 console.log("Building frontend with Vite…");
 execSync("npx vite build --config frontend/vite.config.ts", {
   cwd: projectRoot,
@@ -32,43 +38,6 @@ function collectAssets(directory) {
 }
 
 collectAssets(distDir);
-
-const BUILD_TIMESTAMP_PLACEHOLDER = "__BUILD_TIMESTAMP__";
-const BUILD_TIMESTAMP = new Date().toISOString();
-const TEXT_EXTENSIONS = new Set([
-  ".css",
-  ".html",
-  ".js",
-  ".json",
-  ".map",
-  ".svg",
-  ".txt",
-]);
-
-function isTextFile(filePath) {
-  const extension = extname(filePath).toLowerCase();
-  return TEXT_EXTENSIONS.has(extension);
-}
-
-function replaceBuildTimestampPlaceholders() {
-  for (const filePath of assetFiles.values()) {
-    if (!isTextFile(filePath)) {
-      continue;
-    }
-
-    const original = readFileSync(filePath, "utf8");
-    if (!original.includes(BUILD_TIMESTAMP_PLACEHOLDER)) {
-      continue;
-    }
-
-    const updated = original
-      .split(BUILD_TIMESTAMP_PLACEHOLDER)
-      .join(BUILD_TIMESTAMP);
-    writeFileSync(filePath, updated);
-  }
-}
-
-replaceBuildTimestampPlaceholders();
 
 const indexHtmlPath = resolve(distDir, "index.html");
 let html = readFileSync(indexHtmlPath, "utf8");
