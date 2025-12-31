@@ -30,6 +30,17 @@ function getCookieDomain(request: Request): string {
 }
 
 /**
+ * Helper to extract value from a cookie string
+ * Handles values containing '=' characters (e.g. Base64)
+ */
+function getCookieValue(cookie: string): string | null {
+  const parts = cookie.split("=");
+  if (parts.length < 2) return null;
+  // Join all parts after the first one, restoring the '=' characters
+  return parts.slice(1).join("=");
+}
+
+/**
  * Set session cookie with security settings
  */
 export function setSessionCookie(
@@ -97,7 +108,7 @@ export function getSessionIdFromCookie(request: Request): string | null {
     return null;
   }
 
-  return sessionCookie.split("=")[1] || null;
+  return getCookieValue(sessionCookie);
 }
 
 /**
@@ -139,7 +150,7 @@ export function getStateFromCookie(request: Request): string | null {
     return null;
   }
 
-  return stateCookie.split("=")[1] || null;
+  return getCookieValue(stateCookie);
 }
 
 /**
