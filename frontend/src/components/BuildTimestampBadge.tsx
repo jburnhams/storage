@@ -1,13 +1,19 @@
 import { useEffect, useRef } from "react";
+// @ts-ignore
+import buildMetadata from "../build-metadata.json";
 
 interface BuildTimestampBadgeProps {
+  // Allow overriding timestamp for testing
   timestamp?: string;
 }
 
 export function BuildTimestampBadge({
-  timestamp = "__BUILD_TIMESTAMP__",
+  timestamp: propTimestamp,
 }: BuildTimestampBadgeProps) {
   const spanRef = useRef<HTMLSpanElement>(null);
+
+  // Use prop if provided (for testing), otherwise fall back to imported JSON
+  const timestamp = propTimestamp || buildMetadata?.timestamp;
 
   useEffect(() => {
     const span = spanRef.current;

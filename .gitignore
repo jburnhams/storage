@@ -148,3 +148,4 @@ tests/integration/temp_state/
 
 # Generated frontend assets
 src/frontend/assets.ts
+frontend/src/build-metadata.json

@@ -81,9 +81,12 @@ export function App() {
                 <h1>Storage Auth Service</h1>
                 <p>Centralized authentication for jonathanburnhams.com subdomains</p>
             </div>
-            <button onClick={handleLogout} className="logout-btn">
-            Logout
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <BuildTimestampBadge />
+                <button onClick={handleLogout} className="logout-btn">
+                    Logout
+                </button>
+            </div>
         </div>
       </header>
 
@@ -108,10 +111,6 @@ export function App() {
             )
         } />
       </Routes>
-
-      <footer className="build-info">
-        <BuildTimestampBadge timestamp="__BUILD_TIMESTAMP__" />
-      </footer>
     </main>
   );
 }
