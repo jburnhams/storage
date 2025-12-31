@@ -143,7 +143,7 @@ export function registerAuthRoutes(app: AppType) {
       );
 
       // Create session
-      const sessionId = await createSession(user.id, c.env);
+      const session = await createSession(user.id, c.env);
 
       // Decode state to get redirect URL
       const { redirect } = decodeState(state);
@@ -166,7 +166,7 @@ export function registerAuthRoutes(app: AppType) {
       // Set session cookie and redirect
       const headers = new Headers();
       headers.set('Location', new URL(redirectUrl, c.req.url).toString());
-      headers.append('Set-Cookie', setSessionCookie(sessionId, c.req.raw));
+      headers.append('Set-Cookie', setSessionCookie(session.id, c.req.raw));
       headers.append('Set-Cookie', clearStateCookie(c.req.raw));
 
       return new Response(null, {
