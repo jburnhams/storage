@@ -14,6 +14,7 @@ import {
 import { getOrCreateUser, createSession } from '../session';
 import { setSessionCookie, setStateCookie, getStateFromCookie, clearSessionCookie, clearStateCookie } from '../cookie';
 import { AuthCallbackQuerySchema, AuthLoginQuerySchema, ErrorResponseSchema } from '../schemas';
+import { loadSession } from '../middleware';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -98,6 +99,32 @@ export function registerAuthRoutes(app: AppType) {
   // POST /auth/login
   app.openapi(loginRoute, async (c) => {
     const { redirect } = c.req.valid('query');
+
+    // Check if user is already logged in
+    await loadSession(c);
+    if (c.get('session')) {
+      // User is already logged in, redirect to target or home
+      let redirectUrl = '/';
+      if (redirect) {
+        // Basic validation to prevent javascript: or invalid URLs
+        try {
+          const url = new URL(redirect, c.req.url);
+          if (url.protocol === 'http:' || url.protocol === 'https:') {
+            redirectUrl = redirect;
+          }
+        } catch {
+          // Invalid URL, fallback to home
+        }
+      }
+
+      return new Response(null, {
+        status: 302,
+        headers: {
+          'Location': redirectUrl,
+        },
+      });
+    }
+
     const nonce = generateState();
     const state = encodeState(nonce, redirect);
     const redirectUri = getRedirectUri(c.req.raw);
