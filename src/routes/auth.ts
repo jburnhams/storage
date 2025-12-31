@@ -77,6 +77,28 @@ const callbackRoute = createRoute({
   },
 });
 
+const ALLOWED_DOMAINS = [
+  'jonathanburnhams.com',
+  'jburnhams.workers.dev',
+  'localhost',
+  '127.0.0.1'
+];
+
+function isAllowedRedirect(urlStr: string): boolean {
+  try {
+    const url = new URL(urlStr);
+    const hostname = url.hostname;
+
+    // Check if hostname is exactly one of the allowed domains
+    // or a subdomain of an allowed domain
+    return ALLOWED_DOMAINS.some(domain =>
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
+  } catch {
+    return false;
+  }
+}
+
 // POST /auth/logout
 const logoutRoute = createRoute({
   method: 'post',
@@ -179,20 +201,22 @@ export function registerAuthRoutes(app: AppType) {
       let redirectUrl = '/';
       if (redirect) {
         try {
+          // Resolve relative URLs against current origin
           const url = new URL(redirect, c.req.url);
-          // Only allow same-origin redirects
-          const requestUrl = new URL(c.req.url);
-          if (url.origin === requestUrl.origin) {
-            redirectUrl = url.pathname + url.search + url.hash;
+
+          if (isAllowedRedirect(url.toString())) {
+             redirectUrl = url.toString();
+          } else {
+             return c.json({ error: 'INVALID_REDIRECT', message: 'Redirect URL not allowed' }, 400);
           }
         } catch {
-          // Invalid URL, use default
+          return c.json({ error: 'INVALID_REDIRECT', message: 'Invalid redirect URL format' }, 400);
         }
       }
 
       // Set session cookie and redirect
       const headers = new Headers();
-      headers.set('Location', new URL(redirectUrl, c.req.url).toString());
+      headers.set('Location', redirectUrl);
       headers.append('Set-Cookie', setSessionCookie(session.id, c.req.raw));
       headers.append('Set-Cookie', clearStateCookie(c.req.raw));
 
