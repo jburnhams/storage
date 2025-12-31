@@ -10,19 +10,13 @@ describe("App", () => {
   });
 
   it("shows loading state initially", async () => {
-    // We need to delay the promise resolution to catch the loading state
-    // or just ensure we await `act` properly.
-    // Actually, "loading" is initial state.
-    // If fetch resolves immediately, it might switch state too fast.
-    // But here we mock fetch.
+    // Create a promise we can resolve manually
+    let resolveFetch: (value: any) => void;
+    const fetchPromise = new Promise((resolve) => {
+        resolveFetch = resolve;
+    });
 
-    global.fetch = vi.fn(() => new Promise((resolve) => {
-        // Resolve later
-        setTimeout(() => resolve({
-            ok: false,
-            json: async () => ({})
-        } as any), 100);
-    }));
+    global.fetch = vi.fn(() => fetchPromise);
 
     await act(async () => {
         render(
@@ -32,7 +26,16 @@ describe("App", () => {
         );
     });
 
+    // Check loading state while the promise is pending
     expect(screen.getByText("Loading...")).toBeInTheDocument();
+
+    // Now resolve the promise to complete the effect cycle and avoid teardown errors
+    await act(async () => {
+        resolveFetch!({
+            ok: false,
+            json: async () => ({})
+        });
+    });
   });
 
   it("shows login page when not authenticated", async () => {
