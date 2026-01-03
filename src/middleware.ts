@@ -93,7 +93,10 @@ function createUnauthorizedResponse(c: Context, message: string) {
 }
 
 export async function loadSession(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>) {
-  const sessionId = getSessionIdFromCookie(c.req.raw);
+  let sessionId = c.req.query('session') || null;
+  if (!sessionId) {
+    sessionId = getSessionIdFromCookie(c.req.raw);
+  }
   if (!sessionId) return null;
 
   const session = await getSession(sessionId, c.env);

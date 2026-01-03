@@ -126,15 +126,18 @@ export const ListEntriesQuerySchema = z.object({
   collection_id: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
   limit: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
   offset: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
+  session: z.string().optional(),
 });
 
 export const GetCollectionQuerySchema = z.object({
   secret: z.string().optional(),
+  session: z.string().optional(),
 });
 
 export const GetEntryQuerySchema = z.object({
   download: z.string().optional().transform((val) => val === 'true'),
   raw: z.string().optional().transform((val) => val === 'true'),
+  session: z.string().optional(),
 });
 
 export const PublicShareQuerySchema = z.object({
@@ -146,6 +149,7 @@ export const PublicShareQuerySchema = z.object({
 
 export const ExportCollectionQuerySchema = z.object({
   secret: z.string().optional(),
+  session: z.string().optional(),
 });
 
 // ===== Bulk Operation Schemas =====
