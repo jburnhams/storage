@@ -114,6 +114,8 @@ export async function createMiniflareInstance(options: {
       GOOGLE_CLIENT_ID: secrets.GOOGLE_CLIENT_ID || "test-client-id",
       GOOGLE_CLIENT_SECRET: secrets.GOOGLE_CLIENT_SECRET || "test-client-secret",
       SESSION_SECRET: secrets.SESSION_SECRET || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      YOUTUBE_API_KEY: secrets.YOUTUBE_API_KEY || "test-youtube-key",
+      ...(secrets.YOUTUBE_API_BASE_URL ? { YOUTUBE_API_BASE_URL: secrets.YOUTUBE_API_BASE_URL } : {}),
     },
   });
 

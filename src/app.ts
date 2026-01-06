@@ -9,6 +9,7 @@ import { registerEntryRoutes } from './routes/entries';
 import { registerEntryJsonRoutes } from './routes/entries_json';
 import { registerCollectionRoutes } from './routes/collections';
 import { registerBulkRoutes, registerPublicRoutes } from './routes/bulk';
+import { registerYoutubeRoutes } from './routes/youtube';
 import { renderFrontend } from './frontend';
 
 // Create OpenAPI-enabled Hono app
@@ -58,6 +59,7 @@ export function createApp() {
   registerCollectionRoutes(app);
   registerBulkRoutes(app);
   registerPublicRoutes(app);
+  registerYoutubeRoutes(app);
 
   // Health check
   app.get('/health', (c) => c.text('ok'));
