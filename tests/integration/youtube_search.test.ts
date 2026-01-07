@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createMiniflareInstance, createTestSession, seedTestData, applyWranglerMigrations, bundleWorker } from './setup';
+import { createMiniflareInstance, seedTestData, bundleWorker } from './setup';
 import { Miniflare } from 'miniflare';
 import { Response } from 'undici';
 
@@ -13,26 +13,24 @@ describe('YouTube Search Integration', () => {
     const script = await bundleWorker();
 
     // 1. Create instance (db starts empty)
-    // Pass standard secrets to avoid unnecessary Miniflare reloads (which can cause poisoned stubs)
+    // Pass standard secrets to avoid unnecessary Miniflare reloads
     const instance = await createMiniflareInstance({
       script,
       secrets: {
         GOOGLE_CLIENT_ID: "test-client-id",
         GOOGLE_CLIENT_SECRET: "test-client-secret",
         SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      }
+      },
+      isolate: true // Isolate to avoid breaking shared instance
     });
     mf = instance.mf;
     persistencePath = instance.persistencePath;
 
-    // 2. Apply migrations (createMiniflareInstance does this, but good to be explicit or rely on it)
-    // Actually createMiniflareInstance already called applyWranglerMigrations(persistPath) inside it.
-
-    // 3. Seed data
+    // 2. Seed data
     const db = await mf.getD1Database('DB');
     await seedTestData(db);
 
-    // 4. Seed extra YouTube data for searching
+    // 3. Seed extra YouTube data for searching
     await db.prepare(`
       INSERT INTO youtube_channels (youtube_id, title, description, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at)
       VALUES ('UC_TEST', 'Test Channel', 'Desc', 'http://thumb', '2023-01-01', '{}', '{}', '2023-01-01', '2023-01-01')
@@ -46,23 +44,19 @@ describe('YouTube Search Integration', () => {
       ('VID_3', 'Angular Tutorial', 'Learn Angular', '2023-03-01', 'UC_TEST', 'http://thumb', 'PT30M', '{"viewCount": "300", "likeCount": "30"}', '{}', '2023-03-01', '2023-03-01')
     `).run();
 
-    // 5. Get auth cookie (using one of the users seeded by seedTestData)
-    // seedTestData creates 'test-user' with session 'test-session-user'
-    // createTestSession helper might create a NEW session or return a cookie for an existing user.
-    // Let's use the helper to get a valid cookie header.
-    // However, createTestSession in setup.ts doesn't exist in the file content I read earlier?
-    // Wait, I saw `createTestSession` in the imports of my previous test file, but when I read `tests/integration/setup.ts` in the memory/previous turn, I didn't see `createTestSession` exported.
-    // I saw `seedTestData`.
-    // Let me check `tests/integration/setup.ts` again or just manually construct the cookie since I know the session ID.
-
+    // 4. Set session cookie manually
     sessionCookie = 'storage_session=test-session-user';
   });
 
   afterAll(async () => {
-    await mf.dispose();
+    if (mf) await mf.dispose();
     const fs = await import('fs');
     if (persistencePath) {
-        fs.rmSync(persistencePath, { recursive: true, force: true });
+        try {
+            fs.rmSync(persistencePath, { recursive: true, force: true });
+        } catch (e) {
+            // ignore
+        }
     }
   });
 

@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createMiniflareInstance, createTestUser, createTestSession, seedTestData } from './setup';
+import { createMiniflareInstance, seedTestData } from './setup';
 import type { Miniflare } from 'miniflare';
 import { Response } from 'undici';
 
 describe('Session Authentication via Query Parameter', () => {
   let mf: Miniflare;
   let sessionToken: string;
-  let user: any;
 
   beforeAll(async () => {
     // Import bundleWorker to ensure worker.js is built

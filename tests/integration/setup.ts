@@ -36,11 +36,11 @@ export interface SessionRow {
  */
 export function applyWranglerMigrations(persistPath: string) {
   try {
-    // We use --no-confirm to avoid interactive prompts (wrangler v3.114.x doesn't support --no-confirm, but it falls back to yes in non-interactive)
+    // We use --no-confirm to avoid interactive prompts
     // We use --local because we are testing locally
     execSync(
       `npx wrangler d1 migrations apply DB --local --persist-to "${persistPath}"`,
-      { stdio: "inherit" } // Inherit stdio to see output in tests if needed
+      { stdio: "inherit" }
     );
   } catch (error) {
     console.error("Failed to apply migrations:", error);
@@ -62,7 +62,6 @@ export async function bundleWorker(): Promise<string> {
   const assetsPath = join(process.cwd(), "src", "frontend", "assets.ts");
   if (!existsSync(assetsPath)) {
     console.warn("[setup] src/frontend/assets.ts missing. Creating dummy file for testing.");
-    // Create directory if it doesn't exist (though src/frontend likely exists)
     const assetsDir = join(process.cwd(), "src", "frontend");
     if (!existsSync(assetsDir)) mkdirSync(assetsDir, { recursive: true });
 
@@ -92,10 +91,15 @@ export const FRONTEND_ASSETS = {};
   return content;
 }
 
-const SHARED_MF_KEY = Symbol.for("TEST_SHARED_MF");
-const SHARED_PATH_KEY = Symbol.for("TEST_SHARED_PATH");
-const SHARED_SCRIPT_HASH_KEY = Symbol.for("TEST_SHARED_SCRIPT_HASH");
-const SHARED_SECRETS_HASH_KEY = Symbol.for("TEST_SHARED_SECRETS_HASH");
+function getBindings(secrets: Record<string, string> = {}) {
+  return {
+    GOOGLE_CLIENT_ID: secrets.GOOGLE_CLIENT_ID || "test-client-id",
+    GOOGLE_CLIENT_SECRET: secrets.GOOGLE_CLIENT_SECRET || "test-client-secret",
+    SESSION_SECRET: secrets.SESSION_SECRET || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    YOUTUBE_API_KEY: secrets.YOUTUBE_API_KEY || "test-youtube-key",
+    ...(secrets.YOUTUBE_API_BASE_URL ? { YOUTUBE_API_BASE_URL: secrets.YOUTUBE_API_BASE_URL } : {}),
+  };
+}
 
 /**
  * Creates a Miniflare instance configured for testing
@@ -105,64 +109,14 @@ export async function createMiniflareInstance(options: {
   secrets?: Record<string, string>;
   persistPath?: string;
   script?: string;
+  isolate?: boolean; // Kept for API compatibility, but effectively always isolated now
 }): Promise<{ mf: Miniflare; persistPath: string }> {
-  const globalStore = globalThis as any;
-  const sharedMf = globalStore[SHARED_MF_KEY] as Miniflare | undefined;
-  const sharedPersistPath = globalStore[SHARED_PATH_KEY] as string | undefined;
-  const lastScriptHash = globalStore[SHARED_SCRIPT_HASH_KEY] as string | undefined;
-  const lastSecretsHash = globalStore[SHARED_SECRETS_HASH_KEY] as string | undefined;
-
-  // Simple hash to check if script content changed (length check for speed, or strict comparison)
-  const currentScriptHash = options.script ? String(options.script.length) : undefined;
-  const currentSecretsHash = options.secrets ? JSON.stringify(options.secrets) : undefined;
-
-  // If we already have a shared instance and isolation is not requested, return it.
-  if (!options.isolate && sharedMf && sharedPersistPath) {
-
-    const scriptChanged = options.script && currentScriptHash !== lastScriptHash;
-    const secretsChanged = options.secrets && currentSecretsHash !== lastSecretsHash;
-    const needsUpdate = scriptChanged || secretsChanged;
-
-    if (needsUpdate) {
-        if (options.script) {
-            // Update the script if provided.
-            await sharedMf.setOptions({
-                script: options.script,
-                bindings: {
-                  ...await sharedMf.getBindings(),
-                  ...options.secrets
-                } as any
-            });
-            globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
-            if (options.secrets) globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
-        } else if (options.secrets) {
-            // Update secrets if provided
-            await sharedMf.setOptions({
-                bindings: {
-                    ...await sharedMf.getBindings(),
-                    ...options.secrets
-                } as any
-            });
-            globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
-        }
-    }
-
-    return {
-        mf: sharedMf,
-        persistPath: sharedPersistPath
-    };
-  }
-
   const { secrets = {}, persistPath: providedPersistPath, script = "" } = options;
 
   // Use provided path or create a temporary one
   const persistPath = providedPersistPath || mkdtempSync(join(tmpdir(), "miniflare-test-"));
 
   // Apply migrations to the persistence path
-  // Only apply if we created the path (fresh) OR if explicitly asked?
-  // Actually, wrangler is idempotent so we can always apply, but it might be slow.
-  // Ideally we only apply on creation.
-  // But for simplicity, let's keep it here.
   applyWranglerMigrations(persistPath);
 
   // Wrangler creates a nested directory structure: <persistPath>/v3/d1
@@ -176,34 +130,8 @@ export async function createMiniflareInstance(options: {
       DB: "b1c3f037-ad29-4440-a670-f2cfdfdb36a3",
     },
     d1Persist: d1PersistPath,
-    bindings: {
-      GOOGLE_CLIENT_ID: secrets.GOOGLE_CLIENT_ID || "test-client-id",
-      GOOGLE_CLIENT_SECRET: secrets.GOOGLE_CLIENT_SECRET || "test-client-secret",
-      SESSION_SECRET: secrets.SESSION_SECRET || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      YOUTUBE_API_KEY: secrets.YOUTUBE_API_KEY || "test-youtube-key",
-      ...(secrets.YOUTUBE_API_BASE_URL ? { YOUTUBE_API_BASE_URL: secrets.YOUTUBE_API_BASE_URL } : {}),
-    },
+    bindings: getBindings(secrets),
   });
-
-  if (!options.isolate) {
-    // Monkey-patch dispose to prevent accidental disposal by tests
-    const originalDispose = mf.dispose.bind(mf);
-    mf.dispose = async () => {
-        // No-op for shared instance
-        return;
-    };
-    // If we ever really need to dispose it (e.g. teardown), we can use originalDispose.
-    // But since it's singleton for the process, process exit cleans it up.
-
-    globalStore[SHARED_MF_KEY] = mf;
-    globalStore[SHARED_PATH_KEY] = persistPath;
-    if (options.script) {
-        globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
-    }
-    if (options.secrets) {
-        globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
-    }
-  }
 
   return { mf, persistPath };
 }
@@ -271,11 +199,8 @@ export async function seedTestData(db: D1Database) {
  * Cleans up all data from the database
  */
 export async function cleanDatabase(db: D1Database): Promise<void> {
-  // Enable foreign keys to ensure cascade deletes work
-  await db.prepare("PRAGMA foreign_keys = ON").run();
-
-  // We need to order deletions to avoid constraint violations if CASCADE isn't working for some reason,
-  // though it should be.
+  // We avoid calling PRAGMA foreign_keys = ON here to prevent internal errors in some Miniflare states.
+  // We delete in order: children then parents.
   await db.prepare("DELETE FROM sessions").run();
   await db.prepare("DELETE FROM users").run();
 }
