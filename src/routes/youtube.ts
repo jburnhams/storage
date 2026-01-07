@@ -36,6 +36,72 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     message: z.string(),
   });
 
+  const syncResponseSchema = z.object({
+    count: z.number(),
+    range_start: z.string(),
+    range_end: z.string(),
+    sample_video: videoSchema.nullable(),
+    is_complete: z.boolean(),
+  });
+
+  // POST /api/youtube/channel/:id/sync
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/api/youtube/channel/{id}/sync',
+      tags: ['YouTube'],
+      summary: 'Sync Channel Videos',
+      description: 'Incrementally fetches videos for a channel using a sliding window.',
+      middleware: [requireAuth] as any,
+      request: {
+        params: z.object({
+          id: z.string(),
+        }),
+      },
+      responses: {
+        200: {
+          description: 'Sync progress',
+          content: {
+            'application/json': {
+              schema: syncResponseSchema,
+            },
+          },
+        },
+        404: {
+          description: 'Channel not found',
+          content: {
+            'application/json': {
+              schema: errorSchema,
+            },
+          },
+        },
+        500: {
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: errorSchema,
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const id = c.req.param('id');
+      const service = new YoutubeService(c.env);
+
+      try {
+        const result = await service.syncChannelVideos(id);
+        return c.json(result, 200);
+      } catch (error: any) {
+        if (error.message.includes('not found') || error.message.includes('Not Found')) {
+          return c.json({ error: 'NOT_FOUND', message: error.message }, 404);
+        }
+        console.error('YouTube Sync Error:', error);
+        return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
+      }
+    }
+  );
+
   // GET /api/youtube/channel/:id
   app.openapi(
     createRoute({
