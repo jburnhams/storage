@@ -49,3 +49,30 @@ export interface KeyValueEntryResponse {
   metadata: string | null;
   origin: string | null;
 }
+
+export interface YoutubeChannel {
+  youtube_id: string;
+  title: string;
+  description: string;
+  custom_url: string | null;
+  thumbnail_url: string;
+  published_at: string;
+  statistics: string; // JSON string
+  raw_json: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
+
+export interface YoutubeVideo {
+  youtube_id: string;
+  title: string;
+  description: string;
+  published_at: string;
+  channel_id: string;
+  thumbnail_url: string;
+  duration: string;
+  statistics: string; // JSON string
+  raw_json: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
