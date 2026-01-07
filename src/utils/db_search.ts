@@ -3,11 +3,18 @@ export interface SearchResult {
   params: any[];
 }
 
-export function buildSqlSearch(
-  tableName: string,
+export interface QueryComponents {
+  whereSql: string;
+  orderSql: string;
+  limit: number;
+  offset: number;
+  params: any[];
+}
+
+export function buildQueryComponents(
   queryParams: Record<string, string>,
   allowedColumns: string[]
-): SearchResult {
+): QueryComponents {
   const whereClauses: string[] = [];
   const params: any[] = [];
   const validOps = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains'];
@@ -31,17 +38,16 @@ export function buildSqlSearch(
   if (queryParams.sort_by) {
     if (queryParams.sort_by === 'random') {
       orderBy = 'RANDOM()';
-      orderDir = ''; // Random doesn't use ASC/DESC in the same way usually, but usually strictly RANDOM()
+      orderDir = '';
     } else if (allowedColumns.includes(queryParams.sort_by) || queryParams.sort_by.includes('.')) {
-      // Allow sorting by valid columns or JSON paths if the base column is allowed
       const parts = queryParams.sort_by.split('.');
-      if (parts.length === 1 && allowedColumns.includes(parts[0])) {
+      if (allowedColumns.includes(queryParams.sort_by)) {
+        orderBy = queryParams.sort_by;
+      } else if (parts.length === 1 && allowedColumns.includes(parts[0])) {
         orderBy = parts[0];
       } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
-         // Handle JSON sort: json_extract(col, '$.path')
          const col = parts[0];
          const path = parts.slice(1).join('.');
-         // Sanitize path to prevent injection
          if (/^[a-zA-Z0-9_.]+$/.test(path)) {
             orderBy = `json_extract(${col}, '$.${path}')`;
          }
@@ -57,10 +63,6 @@ export function buildSqlSearch(
   for (const [key, value] of Object.entries(queryParams)) {
     if (['limit', 'offset', 'sort_by', 'sort_order'].includes(key)) continue;
 
-    // Determine field and op
-    // Strategy: Try to match known suffixes.
-    // keys could be: "title_contains", "view_count_gt", "statistics.viewCount_gt"
-
     let field = key;
     let op = 'eq';
 
@@ -72,27 +74,22 @@ export function buildSqlSearch(
       }
     }
 
-    // Check if field is valid
-    // It is valid if it is in allowedColumns OR it is a json path where root is in allowedColumns
     let sqlField = '';
     const parts = field.split('.');
     if (allowedColumns.includes(field)) {
       sqlField = field;
     } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
-      // JSON extraction
       const col = parts[0];
       const path = parts.slice(1).join('.');
-      // Sanitize path to prevent injection
       if (/^[a-zA-Z0-9_.]+$/.test(path)) {
         sqlField = `json_extract(${col}, '$.${path}')`;
       } else {
         continue;
       }
     } else {
-      continue; // Invalid field, skip
+      continue;
     }
 
-    // Add clause
     let sqlOp = '=';
     let paramValue = value;
 
@@ -109,26 +106,22 @@ export function buildSqlSearch(
         break;
     }
 
-    // For numeric comparisons on JSON text fields, we might need CAST if it's strictly numbers,
-    // but SQLite is loose. However, if the user explicitly wants numeric comparison,
-    // they pass a number string. D1/SQLite stores everything as text mostly if declared TEXT,
-    // but json_extract returns values that can be mixed.
-    // Let's rely on SQLite's affinity.
-
     whereClauses.push(`${sqlField} ${sqlOp} ?`);
     params.push(paramValue);
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
-  // Construct final SQL
-  // Note: D1 doesn't support named params in the binding list easily if we mix things,
-  // but using '?' is standard.
-
   const orderSql = orderBy === 'RANDOM()' ? 'ORDER BY RANDOM()' : `ORDER BY ${orderBy} ${orderDir}`;
 
-  const sql = `SELECT * FROM ${tableName} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
+  return { whereSql, orderSql, limit, offset, params };
+}
 
-  return { sql, params };
+export function buildSqlSearch(
+  tableName: string,
+  queryParams: Record<string, string>,
+  allowedColumns: string[]
+): SearchResult {
+  const { whereSql, orderSql, limit, offset, params } = buildQueryComponents(queryParams, allowedColumns);
+  const sql = `SELECT * FROM ${tableName} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
+  return { sql, params: [...params, limit, offset] };
 }
