@@ -26,11 +26,11 @@ describe('YouTube Integration', () => {
 
         if (url.pathname === '/channels') {
           const id = url.searchParams.get('id');
-          if (id === 'UC123') {
+          if (id === 'UC1234567890abcdefghijkl') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
               items: [{
-                id: 'UC123',
+                id: 'UC1234567890abcdefghijkl',
                 snippet: {
                   title: 'Mock Channel',
                   description: 'Mock Desc',
@@ -108,18 +108,19 @@ describe('YouTube Integration', () => {
   });
 
   it('should fetch channel from API on first request and cache it', async () => {
-    const res1 = await mf.dispatchFetch('http://localhost/api/youtube/channel/UC123', {
+    const validId = 'UC1234567890abcdefghijkl';
+    const res1 = await mf.dispatchFetch(`http://localhost/api/youtube/channel/${validId}`, {
       headers: { 'Cookie': 'storage_session=test-session-admin' }
     });
 
     expect(res1.status).toBe(200);
     const body1 = await res1.json() as any;
     expect(body1.title).toBe('Mock Channel');
-    expect(body1.youtube_id).toBe('UC123');
+    expect(body1.youtube_id).toBe(validId);
     expect(apiCallCount).toBe(1);
 
     // Second request should hit cache
-    const res2 = await mf.dispatchFetch('http://localhost/api/youtube/channel/UC123', {
+    const res2 = await mf.dispatchFetch(`http://localhost/api/youtube/channel/${validId}`, {
         headers: { 'Cookie': 'storage_session=test-session-admin' }
     });
     expect(res2.status).toBe(200);

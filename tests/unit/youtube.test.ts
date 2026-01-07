@@ -27,10 +27,10 @@ describe('YoutubeService', () => {
   });
 
   it('should return cached channel if present in DB', async () => {
-    const mockChannel = { youtube_id: 'UC123', title: 'Test Channel' };
+    const mockChannel = { youtube_id: 'UC1234567890abcdefghijkl', title: 'Test Channel' };
     (env.DB.prepare('query').bind('id').first as any).mockResolvedValue(mockChannel);
 
-    const result = await service.getChannel('UC123');
+    const result = await service.getChannel('UC1234567890abcdefghijkl');
 
     expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining('SELECT * FROM youtube_channels'));
     expect(result).toEqual(mockChannel);
@@ -40,9 +40,11 @@ describe('YoutubeService', () => {
   it('should fetch channel from API if not in DB', async () => {
     (env.DB.prepare('query').bind('id').first as any).mockResolvedValue(null);
 
+    const validId = 'UC1234567890abcdefghijkl';
+
     const apiResponse = {
       items: [{
-        id: 'UC123',
+        id: validId,
         snippet: {
           title: 'New Channel',
           description: 'Desc',
@@ -58,12 +60,12 @@ describe('YoutubeService', () => {
       json: async () => apiResponse,
     });
 
-    const result = await service.getChannel('UC123');
+    const result = await service.getChannel(validId);
 
     expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://mock.api/channels'), expect.anything());
     expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO youtube_channels'));
     expect(result.title).toBe('New Channel');
-    expect(result.youtube_id).toBe('UC123');
+    expect(result.youtube_id).toBe(validId);
   });
 
   it('should return cached video if present in DB', async () => {
