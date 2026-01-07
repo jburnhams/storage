@@ -44,9 +44,36 @@ export class YoutubeService {
     return await response.json() as T;
   }
 
-  async getChannel(id: string): Promise<YoutubeChannel> {
-    // 1. Check DB
-    const cached = await this.env.DB.prepare(
+  async resolveChannelId(input: string): Promise<string> {
+    // 1. If it looks like a Channel ID (UC...) and length is 24, assume it is an ID.
+    if (input.startsWith('UC') && input.length === 24) {
+      return input;
+    }
+
+    // 2. Search
+    const searchRes = await this.fetchFromApi<YoutubeListResponse<YoutubeSearchResource>>('search', {
+      q: input,
+      type: 'channel',
+      part: 'id',
+      maxResults: '1'
+    });
+
+    if (!searchRes.items || searchRes.items.length === 0) {
+      throw new Error(`Channel not found for: ${input}`);
+    }
+
+    const channelId = searchRes.items[0].id.channelId;
+    if (!channelId) {
+        throw new Error(`Channel ID not found in search results for: ${input}`);
+    }
+    return channelId;
+  }
+
+  async getChannel(idOrHandle: string): Promise<YoutubeChannel> {
+    let id = idOrHandle;
+
+    // 1. Check DB by ID
+    let cached = await this.env.DB.prepare(
       'SELECT * FROM youtube_channels WHERE youtube_id = ?'
     ).bind(id).first<YoutubeChannel>();
 
@@ -54,7 +81,38 @@ export class YoutubeService {
       return cached;
     }
 
-    // 2. Fetch from API
+    // 2. Check DB by custom_url (handle)
+    // Note: custom_url stores the handle (e.g. @Handle)
+    cached = await this.env.DB.prepare(
+      'SELECT * FROM youtube_channels WHERE custom_url = ? OR custom_url = ?'
+    ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel>();
+
+    if (cached) {
+      return cached;
+    }
+
+    // 3. Resolve ID if needed
+    if (!id.startsWith('UC') || id.length !== 24) {
+      try {
+        id = await this.resolveChannelId(idOrHandle);
+
+        // Check DB again with resolved ID
+        cached = await this.env.DB.prepare(
+          'SELECT * FROM youtube_channels WHERE youtube_id = ?'
+        ).bind(id).first<YoutubeChannel>();
+
+        if (cached) {
+          return cached;
+        }
+      } catch (e) {
+        // If resolution fails, maybe it IS a weird ID?
+        // But for now, propagate error or fall through to try as ID (which will fail)
+        // Let's propagate.
+        throw e;
+      }
+    }
+
+    // 4. Fetch from API using ID
     const data = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
       id: id,
       part: 'snippet,statistics'
@@ -80,7 +138,7 @@ export class YoutubeService {
       updated_at: now
     };
 
-    // 3. Store in DB
+    // 5. Store in DB
     await this.env.DB.prepare(
       `INSERT INTO youtube_channels
        (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at)

@@ -285,3 +285,15 @@ export interface YoutubeListResponse<T> {
 export interface PromoteAdminRequest {
   email: string;
 }
+
+export interface YoutubeSearchResource {
+  kind: "youtube#searchResult";
+  etag: string;
+  id: {
+    kind: string;
+    videoId?: string;
+    channelId?: string;
+    playlistId?: string;
+  };
+  snippet: YoutubeVideoSnippet;
+}
