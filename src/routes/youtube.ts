@@ -31,6 +31,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     description: z.string(),
     published_at: z.string(),
     channel_id: z.string(),
+    channel_title: z.string().optional(),
     thumbnail_url: z.string(),
     duration: z.string(),
     statistics: z.string(), // JSON string
@@ -122,6 +123,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           sort_by: z.string().optional(),
           sort_order: z.string().optional(),
           channel_id: z.string().optional(),
+          title_contains: z.string().optional(),
           // Allow other keys loosely? Zod doesn't strictly allow arbitrary keys by default without .passthrough()
           // But Hono/Zod integration might strip unknown keys.
           // To allow arbitrary filters, we might need to skip strict validation or define common filters.
@@ -156,23 +158,33 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           'statistics', 'created_at', 'updated_at'
         ];
 
-        // buildSqlSearch automatically handles filtering for any key in allowedColumns that exists in query.
-        // This includes 'channel_id' if present in the request query parameters.
-        const { sql, params } = buildSqlSearch('youtube_videos', query, allowedColumns);
+        // Use 'v' as alias for youtube_videos
+        const { whereSql, orderSql, limit, offset, whereParams } = buildSqlSearch('youtube_videos', query, allowedColumns, 'v');
 
-        const { results } = await c.env.DB.prepare(sql).bind(...params).all();
+        const sql = `
+            SELECT
+                v.youtube_id, v.title, v.description, v.published_at,
+                v.channel_id, v.thumbnail_url, v.duration,
+                v.statistics, v.raw_json, v.created_at, v.updated_at,
+                c.title as channel_title
+            FROM youtube_videos v
+            LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id
+            ${whereSql}
+            ${orderSql}
+            LIMIT ? OFFSET ?
+        `;
+
+        const { results } = await c.env.DB.prepare(sql).bind(...whereParams, limit, offset).all();
 
         // Parse JSON fields if necessary (D1 might return them as strings)
         const parsedResults = results.map((row: any) => ({
             ...row,
-           // Ensure these are strings if D1 returns them as such, or keep as is.
-           // Schema says TEXT, but if they were inserted as strings, they come out as strings.
         }));
 
         return c.json({
           videos: parsedResults,
-          limit: query.limit ? parseInt(query.limit) : 50,
-          offset: query.offset ? parseInt(query.offset) : 0,
+          limit,
+          offset,
         }, 200);
       } catch (error: any) {
         console.error('YouTube Search Error:', error);

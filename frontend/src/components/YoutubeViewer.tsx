@@ -38,6 +38,31 @@ export function YoutubeViewer() {
     const [syncProgress, setSyncProgress] = useState<YoutubeSyncResponse | null>(null);
     const [totalFetched, setTotalFetched] = useState(0);
 
+    const fetchChannelDetail = async (channelId: string) => {
+        setLoading(true);
+        setError(null);
+        setSingleData(null);
+        // Ensure UI state matches
+        setViewMode('id');
+        setType('channel');
+        setId(channelId);
+
+        try {
+            const res = await fetch(`/api/youtube/channel/${channelId}`);
+            const json = await res.json();
+
+            if (!res.ok) {
+                throw new Error(json.message || json.error || 'Failed to fetch');
+            }
+
+            setSingleData(json);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleIdSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!id) return;
@@ -287,7 +312,25 @@ export function YoutubeViewer() {
                                     </td>
                                     <td style={{ padding: '0.75rem' }}>{new Date(video.published_at).toLocaleDateString()}</td>
                                     <td style={{ padding: '0.75rem' }}>{parseInt(views).toLocaleString()}</td>
-                                    <td style={{ padding: '0.75rem', fontSize: '0.9rem', fontFamily: 'monospace' }}>{video.channel_id}</td>
+                                    <td style={{ padding: '0.75rem' }}>
+                                        <button
+                                            onClick={() => {
+                                                fetchChannelDetail(video.channel_id);
+                                            }}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: 'var(--color-primary)',
+                                                cursor: 'pointer',
+                                                textDecoration: 'underline',
+                                                padding: 0,
+                                                fontFamily: 'inherit',
+                                                fontSize: 'inherit'
+                                            }}
+                                        >
+                                            {video.channel_title || video.channel_id}
+                                        </button>
+                                    </td>
                                 </tr>
                             )
                         })}

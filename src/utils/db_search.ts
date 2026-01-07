@@ -1,15 +1,21 @@
 export interface SearchResult {
   sql: string;
   params: any[];
+  whereSql: string;
+  orderSql: string;
+  limit: number;
+  offset: number;
+  whereParams: any[];
 }
 
 export function buildSqlSearch(
   tableName: string,
   queryParams: Record<string, string>,
-  allowedColumns: string[]
+  allowedColumns: string[],
+  tableAlias?: string
 ): SearchResult {
   const whereClauses: string[] = [];
-  const params: any[] = [];
+  const whereParams: any[] = [];
   const validOps = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains'];
 
   // Extract special params
@@ -26,20 +32,22 @@ export function buildSqlSearch(
   }
 
   let orderBy = 'created_at'; // Default
+  if (tableAlias) orderBy = `${tableAlias}.created_at`;
+
   let orderDir = 'DESC';
 
   if (queryParams.sort_by) {
     if (queryParams.sort_by === 'random') {
       orderBy = 'RANDOM()';
-      orderDir = ''; // Random doesn't use ASC/DESC in the same way usually, but usually strictly RANDOM()
+      orderDir = '';
     } else if (allowedColumns.includes(queryParams.sort_by) || queryParams.sort_by.includes('.')) {
       // Allow sorting by valid columns or JSON paths if the base column is allowed
       const parts = queryParams.sort_by.split('.');
       if (parts.length === 1 && allowedColumns.includes(parts[0])) {
-        orderBy = parts[0];
+        orderBy = tableAlias ? `${tableAlias}.${parts[0]}` : parts[0];
       } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
          // Handle JSON sort: json_extract(col, '$.path')
-         const col = parts[0];
+         const col = tableAlias ? `${tableAlias}.${parts[0]}` : parts[0];
          const path = parts.slice(1).join('.');
          // Sanitize path to prevent injection
          if (/^[a-zA-Z0-9_.]+$/.test(path)) {
@@ -58,9 +66,6 @@ export function buildSqlSearch(
     if (['limit', 'offset', 'sort_by', 'sort_order'].includes(key)) continue;
 
     // Determine field and op
-    // Strategy: Try to match known suffixes.
-    // keys could be: "title_contains", "view_count_gt", "statistics.viewCount_gt"
-
     let field = key;
     let op = 'eq';
 
@@ -73,14 +78,13 @@ export function buildSqlSearch(
     }
 
     // Check if field is valid
-    // It is valid if it is in allowedColumns OR it is a json path where root is in allowedColumns
     let sqlField = '';
     const parts = field.split('.');
     if (allowedColumns.includes(field)) {
-      sqlField = field;
+      sqlField = tableAlias ? `${tableAlias}.${field}` : field;
     } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
       // JSON extraction
-      const col = parts[0];
+      const col = tableAlias ? `${tableAlias}.${parts[0]}` : parts[0];
       const path = parts.slice(1).join('.');
       // Sanitize path to prevent injection
       if (/^[a-zA-Z0-9_.]+$/.test(path)) {
@@ -109,26 +113,15 @@ export function buildSqlSearch(
         break;
     }
 
-    // For numeric comparisons on JSON text fields, we might need CAST if it's strictly numbers,
-    // but SQLite is loose. However, if the user explicitly wants numeric comparison,
-    // they pass a number string. D1/SQLite stores everything as text mostly if declared TEXT,
-    // but json_extract returns values that can be mixed.
-    // Let's rely on SQLite's affinity.
-
     whereClauses.push(`${sqlField} ${sqlOp} ?`);
-    params.push(paramValue);
+    whereParams.push(paramValue);
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
-  // Construct final SQL
-  // Note: D1 doesn't support named params in the binding list easily if we mix things,
-  // but using '?' is standard.
-
   const orderSql = orderBy === 'RANDOM()' ? 'ORDER BY RANDOM()' : `ORDER BY ${orderBy} ${orderDir}`;
 
   const sql = `SELECT * FROM ${tableName} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
+  const params = [...whereParams, limit, offset];
 
-  return { sql, params };
+  return { sql, params, whereSql, orderSql, limit, offset, whereParams };
 }
