@@ -7,6 +7,11 @@ interface SearchResult {
     offset: number;
 }
 
+interface ChannelOption {
+    youtube_id: string;
+    title: string;
+}
+
 export function YoutubeViewer() {
     // Mode switcher
     const [viewMode, setViewMode] = useState<'id' | 'search'>('id');
@@ -18,6 +23,8 @@ export function YoutubeViewer() {
 
     // Search State
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedChannel, setSelectedChannel] = useState('');
+    const [channels, setChannels] = useState<ChannelOption[]>([]);
     const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
     const [sortConfig, setSortConfig] = useState<{ by: string; order: 'asc' | 'desc' }>({ by: 'published_at', order: 'desc' });
     const [pagination, setPagination] = useState({ limit: 10, offset: 0 });
@@ -55,6 +62,24 @@ export function YoutubeViewer() {
         }
     };
 
+    const fetchChannels = async () => {
+        try {
+            const res = await fetch('/api/youtube/channels');
+            if (res.ok) {
+                const data = await res.json();
+                setChannels(data.channels);
+            }
+        } catch (e) {
+            console.error('Failed to fetch channels', e);
+        }
+    };
+
+    useEffect(() => {
+        if (viewMode === 'search' && channels.length === 0) {
+            fetchChannels();
+        }
+    }, [viewMode]);
+
     const handleVideoSearch = async (overrideOffset?: number) => {
         setLoading(true);
         setError(null);
@@ -64,6 +89,7 @@ export function YoutubeViewer() {
         try {
             const params = new URLSearchParams();
             if (searchQuery) params.append('title_contains', searchQuery);
+            if (selectedChannel) params.append('channel_id', selectedChannel);
             params.append('sort_by', sortConfig.by);
             params.append('sort_order', sortConfig.order);
             params.append('limit', pagination.limit.toString());
@@ -326,6 +352,16 @@ export function YoutubeViewer() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             style={{ flex: 1 }}
                         />
+                         <select
+                            value={selectedChannel}
+                            onChange={(e) => setSelectedChannel(e.target.value)}
+                            style={{ width: '200px' }}
+                        >
+                            <option value="">All Channels</option>
+                            {channels.map(c => (
+                                <option key={c.youtube_id} value={c.youtube_id}>{c.title}</option>
+                            ))}
+                        </select>
                         <button type="submit" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
                     </form>
                     {error && <div className="error">{error}</div>}

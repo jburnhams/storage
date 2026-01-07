@@ -18,6 +18,13 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     updated_at: z.string(),
   });
 
+  const channelListSchema = z.object({
+    channels: z.array(z.object({
+        youtube_id: z.string(),
+        title: z.string(),
+    })),
+  });
+
   const videoSchema = z.object({
     youtube_id: z.string(),
     title: z.string(),
@@ -50,6 +57,54 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     sample_video: videoSchema.nullable(),
     is_complete: z.boolean(),
   });
+
+  // GET /api/youtube/channels
+  app.openapi(
+    createRoute({
+        method: 'get',
+        path: '/api/youtube/channels',
+        tags: ['YouTube'],
+        summary: 'List YouTube Channels',
+        description: 'Get a list of all synced YouTube channels.',
+        middleware: [requireAuth] as any,
+        responses: {
+            200: {
+                description: 'List of channels',
+                content: {
+                    'application/json': {
+                        schema: channelListSchema,
+                    },
+                },
+            },
+            500: {
+                description: 'Server error',
+                content: {
+                    'application/json': {
+                        schema: errorSchema,
+                    },
+                },
+            },
+        },
+    }),
+    async (c) => {
+        try {
+            const { results } = await c.env.DB.prepare(
+                'SELECT youtube_id, title FROM youtube_channels ORDER BY title ASC'
+            ).all();
+
+            // Map results to ensure type safety if needed, though D1 returns objects
+            const channels = results.map((r: any) => ({
+                youtube_id: r.youtube_id,
+                title: r.title,
+            }));
+
+            return c.json({ channels }, 200);
+        } catch (error: any) {
+            console.error('YouTube Channels Error:', error);
+            return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
+        }
+    }
+  );
 
   // GET /api/youtube/videos
   app.openapi(

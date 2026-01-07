@@ -79,4 +79,17 @@ describe('YouTube Search Endpoint', () => {
     const body = await res.json();
     expect(body.error).toBe('INTERNAL_ERROR');
   });
+
+  it('filters by channel_id', async () => {
+    mockAll.mockResolvedValue({ results: [] });
+
+    const res = await app.request('/api/youtube/videos?channel_id=UC123', {
+       method: 'GET',
+    }, mockEnv as any);
+
+    expect(res.status).toBe(200);
+    const sqlArg = mockPrepare.mock.calls[0][0];
+    expect(sqlArg).toContain('WHERE channel_id = ?');
+    expect(mockBind).toHaveBeenCalledWith('UC123', 50, 0);
+  });
 });
