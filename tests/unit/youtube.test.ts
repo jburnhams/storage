@@ -60,7 +60,7 @@ describe('YoutubeService', () => {
 
     const result = await service.getChannel('UC123');
 
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://mock.api/channels'));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://mock.api/channels'), expect.anything());
     expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO youtube_channels'));
     expect(result.title).toBe('New Channel');
     expect(result.youtube_id).toBe('UC123');
@@ -101,7 +101,7 @@ describe('YoutubeService', () => {
 
     const result = await service.getVideo('V123');
 
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://mock.api/videos'));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://mock.api/videos'), expect.anything());
     expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO youtube_videos'));
     expect(result.title).toBe('New Video');
     expect(result.duration).toBe('PT1M');
