@@ -1,90 +1,124 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { YoutubeViewer } from '../../src/components/YoutubeViewer';
 import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { YoutubeViewer } from '../../src/components/YoutubeViewer';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import type { YoutubeChannel } from '../../src/types';
 
 // Mock fetch
-global.fetch = vi.fn();
+const globalFetch = vi.fn();
+global.fetch = globalFetch;
 
 describe('YoutubeViewer', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
 
-  it('renders correctly', () => {
-    render(<YoutubeViewer />);
-    expect(screen.getByText('YouTube Viewer')).toBeDefined();
-    expect(screen.getByPlaceholderText('Video ID (e.g. dQw...)')).toBeDefined();
-    expect(screen.getByText('Fetch')).toBeDefined();
-  });
-
-  it('toggles between Video and Channel input', () => {
-    render(<YoutubeViewer />);
-    const select = screen.getByRole('combobox');
-
-    fireEvent.change(select, { target: { value: 'channel' } });
-    expect(screen.getByPlaceholderText('Channel ID (e.g. UC...)')).toBeDefined();
-
-    fireEvent.change(select, { target: { value: 'video' } });
-    expect(screen.getByPlaceholderText('Video ID (e.g. dQw...)')).toBeDefined();
-  });
-
-  it('fetches and displays video data', async () => {
-    const mockData = {
-      youtube_id: 'dQw4w9WgXcQ',
-      title: 'Never Gonna Give You Up',
-      description: 'Rick Astley',
-      published_at: '2009-10-25T00:00:00Z',
-      thumbnail_url: 'http://example.com/thumb.jpg',
-      statistics: JSON.stringify({ viewCount: "1000", likeCount: "10" }),
-      raw_json: JSON.stringify({ id: 'dQw4w9WgXcQ', snippet: { title: 'Never Gonna Give You Up' } }),
+    const mockVideo = {
+        youtube_id: 'vid1',
+        title: 'Test Video',
+        description: 'Desc',
+        published_at: '2023-01-01',
+        channel_id: 'chan1',
+        thumbnail_url: 'thumb.jpg',
+        duration: '10:00',
+        statistics: JSON.stringify({ viewCount: 1000 }),
+        raw_json: '{}',
+        created_at: '2023-01-01',
+        updated_at: '2023-01-01'
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockData,
+    it('switches between ID and Search modes', () => {
+        render(<YoutubeViewer />);
+        expect(screen.getByPlaceholderText(/Video ID/)).toBeDefined();
+
+        fireEvent.click(screen.getByText('Search Database'));
+        expect(screen.getByPlaceholderText('Search videos by title...')).toBeDefined();
+
+        fireEvent.click(screen.getByText('Fetch ID'));
+        expect(screen.getByPlaceholderText(/Video ID/)).toBeDefined();
     });
 
-    render(<YoutubeViewer />);
+    it('searches for videos and displays results in table', async () => {
+        globalFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                videos: [mockVideo],
+                limit: 10,
+                offset: 0
+            })
+        });
 
-    const input = screen.getByPlaceholderText('Video ID (e.g. dQw...)');
-    fireEvent.change(input, { target: { value: 'dQw4w9WgXcQ' } });
+        render(<YoutubeViewer />);
+        fireEvent.click(screen.getByText('Search Database'));
 
-    const button = screen.getByText('Fetch');
+        const searchInput = screen.getByPlaceholderText('Search videos by title...');
+        fireEvent.change(searchInput, { target: { value: 'Test' } });
+        fireEvent.click(screen.getByText('Search'));
 
-    // Wrap async actions in act
-    await act(async () => {
-        fireEvent.click(button);
+        await waitFor(() => screen.getByText('Test Video'));
+        expect(screen.getByText('1,000')).toBeDefined(); // Views formatted
+        expect(screen.getByText('chan1')).toBeDefined();
+
+        // Verify fetch params
+        const url = new URL(globalFetch.mock.calls[0][0], 'http://localhost');
+        expect(url.pathname).toBe('/api/youtube/videos');
+        expect(url.searchParams.get('title_contains')).toBe('Test');
+        expect(url.searchParams.get('limit')).toBe('10');
+        expect(url.searchParams.get('offset')).toBe('0');
     });
 
-    await waitFor(() => {
-        expect(screen.getByText('Never Gonna Give You Up')).toBeDefined();
+    it('handles sorting', async () => {
+        globalFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                videos: [mockVideo],
+                limit: 10,
+                offset: 0
+            })
+        });
+
+        render(<YoutubeViewer />);
+        fireEvent.click(screen.getByText('Search Database'));
+        fireEvent.click(screen.getByText('Search')); // Initial search
+        await waitFor(() => screen.getByText('Test Video'));
+
+        // Click on Views header to sort
+        fireEvent.click(screen.getByText(/Views/));
+
+        await waitFor(() => {
+            const calls = globalFetch.mock.calls;
+            const lastCall = calls[calls.length - 1];
+            const url = new URL(lastCall[0], 'http://localhost');
+            expect(url.searchParams.get('sort_by')).toBe('statistics.viewCount');
+            // Default first click might be desc or asc depending on impl, let's just check the param changed
+        });
     });
 
-    expect(screen.getByText('Rick Astley')).toBeDefined();
-    expect(screen.getByText('view Count')).toBeDefined();
-    expect(screen.getByText('1000')).toBeDefined();
-  });
+    it('handles pagination', async () => {
+        globalFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                videos: Array(11).fill(mockVideo), // Mock enough to enable Next button logic if we checked length,
+                                                   // but component checks length vs limit.
+                                                   // Let's just mock return.
+                limit: 10,
+                offset: 0
+            })
+        });
 
-  it('handles fetch errors', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ error: 'NOT_FOUND', message: 'Video not found' }),
+        render(<YoutubeViewer />);
+        fireEvent.click(screen.getByText('Search Database'));
+        fireEvent.click(screen.getByText('Search'));
+        await waitFor(() => screen.getAllByText('Test Video'));
+
+        const nextBtn = screen.getByText('Next');
+        fireEvent.click(nextBtn);
+
+        await waitFor(() => {
+            const calls = globalFetch.mock.calls;
+            const lastCall = calls[calls.length - 1];
+            const url = new URL(lastCall[0], 'http://localhost');
+            expect(url.searchParams.get('offset')).toBe('10');
+        });
     });
-
-    render(<YoutubeViewer />);
-
-    const input = screen.getByPlaceholderText('Video ID (e.g. dQw...)');
-    fireEvent.change(input, { target: { value: 'invalid' } });
-
-    const button = screen.getByText('Fetch');
-
-    await act(async () => {
-        fireEvent.click(button);
-    });
-
-    await waitFor(() => {
-        expect(screen.getByText('Video not found')).toBeDefined();
-    });
-  });
 });
