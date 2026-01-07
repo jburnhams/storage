@@ -14,6 +14,8 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    // Disable isolation to allow sharing the Miniflare instance via globalThis
+    isolate: false,
     fileParallelism: false,
     coverage: {
       provider: "v8",
