@@ -32,13 +32,18 @@ describe("Storage Lifecycle Integration Tests", () => {
 
   beforeEach(async () => {
     db = await mf.getD1Database("DB");
-    const { cleanDatabase } = await import('./setup');
     await cleanDatabase(db);
     await seedTestData(db);
   });
 
   afterAll(async () => {
-    // Singleton handles cleanup
+    if (mf) await mf.dispose();
+    try {
+      const { rmSync } = await import("fs");
+      if (persistPath) rmSync(persistPath, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Failed to clean up D1 persistence:", e);
+    }
   });
 
   it("should create, update, and delete an entry", async () => {

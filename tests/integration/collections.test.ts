@@ -17,14 +17,16 @@ describe("Collection API Integration", () => {
         persistPath = instance.persistPath;
 
         db = await mf.getD1Database("DB");
-        const { cleanDatabase } = await import('./setup');
-        await cleanDatabase(db);
         await seedTestData(db);
     });
 
-
     afterAll(async () => {
-        // Singleton handles cleanup
+        if (mf) await mf.dispose();
+        if (persistPath) {
+            try {
+                rmSync(persistPath, { recursive: true, force: true });
+            } catch (e) { console.error(e); }
+        }
     });
 
     // NOTE: The cookie name is "storage_session" as per src/cookie.ts

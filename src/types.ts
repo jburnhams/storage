@@ -173,7 +173,6 @@ export interface YoutubeChannel {
   thumbnail_url: string;
   published_at: string;
   statistics: string; // JSON
-  total_video_count?: number;
   raw_json: string; // JSON
   created_at: string;
   updated_at: string;

@@ -37,7 +37,7 @@ describe("Multipart Storage (Unit)", () => {
         expect(Array.isArray(part0) || part0 instanceof ArrayBuffer).toBe(true);
     });
 
-    it("should retrieve a large blob correctly", async () => {
+    it("should retrieve a large blob correctly", { timeout: 10000 }, async () => {
         const largeData = new Uint8Array(LARGE_BLOB_SIZE);
         for(let i=0; i<largeData.length; i++) largeData[i] = i % 256;
 

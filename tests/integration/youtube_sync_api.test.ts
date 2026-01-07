@@ -87,14 +87,13 @@ describe('YouTube Sync Integration', () => {
 
     // Seed DB
     const db = await mf.getD1Database('DB');
-    const { cleanDatabase } = await import('./setup');
-    await cleanDatabase(db);
     await seedTestData(db);
   });
 
   afterEach(async () => {
     mockServer.close();
-    // Singleton handles cleanup
+    await mf.dispose();
+    rmSync(persistPath, { recursive: true, force: true });
   });
 
   it('syncs channel videos via API with authentication', async () => {

@@ -99,14 +99,12 @@ const SHARED_SECRETS_HASH_KEY = Symbol.for("TEST_SHARED_SECRETS_HASH");
 
 /**
  * Creates a Miniflare instance configured for testing
- * with D1 database and secrets.
- * Reuses a single instance if called multiple times (singleton), unless isolated is requested.
+ * with D1 database and secrets
  */
 export async function createMiniflareInstance(options: {
   secrets?: Record<string, string>;
   persistPath?: string;
   script?: string;
-  isolate?: boolean;
 }): Promise<{ mf: Miniflare; persistPath: string }> {
   const globalStore = globalThis as any;
   const sharedMf = globalStore[SHARED_MF_KEY] as Miniflare | undefined;
@@ -161,6 +159,10 @@ export async function createMiniflareInstance(options: {
   const persistPath = providedPersistPath || mkdtempSync(join(tmpdir(), "miniflare-test-"));
 
   // Apply migrations to the persistence path
+  // Only apply if we created the path (fresh) OR if explicitly asked?
+  // Actually, wrangler is idempotent so we can always apply, but it might be slow.
+  // Ideally we only apply on creation.
+  // But for simplicity, let's keep it here.
   applyWranglerMigrations(persistPath);
 
   // Wrangler creates a nested directory structure: <persistPath>/v3/d1
@@ -269,20 +271,11 @@ export async function seedTestData(db: D1Database) {
  * Cleans up all data from the database
  */
 export async function cleanDatabase(db: D1Database): Promise<void> {
-  // Turn off foreign keys to allow deleting in any order
-  await db.prepare("PRAGMA foreign_keys = OFF").run();
-
-  // Dynamically get all tables
-  const tablesResult = await db.prepare(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`
-  ).all();
-
-  const tables = tablesResult.results.map((r: any) => r.name);
-
-  for (const table of tables) {
-      await db.prepare(`DELETE FROM ${table}`).run();
-  }
-
-  // Re-enable foreign keys
+  // Enable foreign keys to ensure cascade deletes work
   await db.prepare("PRAGMA foreign_keys = ON").run();
+
+  // We need to order deletions to avoid constraint violations if CASCADE isn't working for some reason,
+  // though it should be.
+  await db.prepare("DELETE FROM sessions").run();
+  await db.prepare("DELETE FROM users").run();
 }
