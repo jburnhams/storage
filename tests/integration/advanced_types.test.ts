@@ -1,6 +1,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createMiniflareInstance, seedTestData } from '../integration/setup';
+import { createMiniflareInstance, seedTestData, cleanDatabase } from '../integration/setup';
 import { Miniflare } from 'miniflare';
 import fs from 'fs';
 
@@ -17,14 +17,27 @@ describe('Advanced Types Integration', () => {
 
     // Setup database
     const db = await mf.getD1Database('DB');
+    // Ensure clean state before seeding
+    await cleanDatabase(db);
     await seedTestData(db);
   });
 
-  afterEach(() => {
-    // Cleanup persistence directory
+  afterEach(async () => {
+     // Don't delete persistencePath if it's the shared one.
+     // Since createMiniflareInstance logic with isolate=false (default) returns shared,
+     // we shouldn't delete it unless we know it's isolated.
+     // But better yet, we just clean the DB for next test?
+     // Actually `cleanDatabase` in `beforeEach` should handle it.
+
+     // However, removing the persistence path *forcefully* while other tests might use it is bad.
+     // If we are sharing, we shouldn't remove it.
+     // Let's remove this aggressive cleanup or only do it if we passed `isolate: true` (which we didn't).
+     // I'll comment it out to be safe for shared instance.
+     /*
     if (persistencePath && fs.existsSync(persistencePath)) {
       fs.rmSync(persistencePath, { recursive: true, force: true });
     }
+    */
   });
 
   async function createEntry(type: string, value: string, key: string) {
@@ -32,29 +45,6 @@ describe('Advanced Types Integration', () => {
     formData.append('key', key);
     formData.append('type', type);
     formData.append('string_value', value);
-
-    // Miniflare 3 / Workerd quirk: when passing FormData directly in body with dispatchFetch,
-    // it sometimes doesn't set Content-Type correctly if not careful or using undici.
-    // However, Miniflare's dispatchFetch should handle it.
-    // The error "Unrecognized Content-Type header value" suggests it's missing or malformed.
-    // We can try constructing the body manually or trusting undici (which Miniflare uses).
-    // Let's try explicitly not setting Content-Type so it's auto-generated with boundary?
-    // Wait, Miniflare `dispatchFetch` implementation:
-    // If we use the native `Request` constructor or `undici`, we need to be careful.
-
-    // Alternative: Use JSON endpoint for creation which is robust.
-    // But we modified the FormData endpoint. We should test it.
-    // Let's try to simulate the FormData correctly.
-
-    // Workaround: We can't easily rely on global FormData in Node environment working perfectly with Miniflare's fetch without proper headers.
-    // But `new Response(formData).blob()` or `.arrayBuffer()` usually helps.
-    // Or we can use the JSON endpoint for these simple types, which is also supported and maybe cleaner.
-    // BUT the requirement was about "update these to add simpler types" which implies the main entry creation flow.
-    // Let's try to fix the test helper.
-
-    // Using `undici` directly or just `mf.dispatchFetch` with `FormData` usually works if `undici` is polyfilled or provided.
-    // In this environment, let's try reading it into a buffer and setting headers manually if needed.
-    // Actually, `Response` object usually handles it.
 
     const req = new Response(formData);
     const blob = await req.blob();
@@ -86,7 +76,6 @@ describe('Advanced Types Integration', () => {
 
   it('creates and exports boolean entry', async () => {
     const res = await createEntry('boolean', 'true', 'config/active');
-    // If this fails with 500 again, we might fallback to JSON endpoint testing or fix the FormData construction
     if (res.status === 500) {
         const err = await res.json() as any;
         console.error("Create failed:", err);

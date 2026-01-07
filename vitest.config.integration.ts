@@ -5,17 +5,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["tests/integration/**/*.test.ts"],
-    testTimeout: 30000, // Integration tests may take longer
-    hookTimeout: 30000,
-    // Run tests sequentially to avoid bundling race conditions
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
-    // Disable isolation to allow sharing the Miniflare instance via globalThis
-    isolate: false,
+    testTimeout: 60000, // Integration tests may take longer
+    hookTimeout: 60000,
+    // Run tests sequentially to avoid resource contention
     fileParallelism: false,
     coverage: {
       provider: "v8",

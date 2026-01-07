@@ -20,6 +20,7 @@ describe("Worker HTTP Integration Tests", () => {
 
     // Pass the script directly to createMiniflareInstance so we don't have to restart it
     // This handles DB setup and worker script loading in one go with the correct bindings
+    // Isolate this test as well because it provides custom secrets which triggers setOptions
     const result = await createMiniflareInstance({
       secrets: {
         GOOGLE_CLIENT_ID: "test-client-id",
@@ -27,6 +28,7 @@ describe("Worker HTTP Integration Tests", () => {
         SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       },
       script: workerScript,
+      isolate: true // Isolate to avoid breaking shared instance
     });
     mf = result.mf;
     persistPath = result.persistPath;
