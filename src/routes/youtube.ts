@@ -187,6 +187,56 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
              // It's a video column. Replace key with v.field_op
              delete prefixedQuery[key];
              prefixedQuery[`v.${field}${opSuffix}`] = query[key];
+           } else {
+             // Check if it's a JSON path where the root is in videoColumns
+             const parts = field.split('.');
+             if (parts.length > 1 && videoColumns.includes(parts[0])) {
+               // It's a JSON path, e.g. statistics.viewCount
+               // We need to prefix the query KEY so that when buildQueryComponents runs,
+               // it sees v.statistics.viewCount_op
+
+               // But buildQueryComponents splits by '.' to find the col.
+               // If key is v.statistics.viewCount_gt
+               // field becomes v.statistics.viewCount
+               // parts = ['v', 'statistics', 'viewCount']
+               // col = parts[0] = 'v' -> NOT in allowedColumns (which has v.statistics)
+
+               // Wait, buildQueryComponents logic:
+               // if (parts.length > 1 && allowedColumns.includes(parts[0]))
+
+               // If allowedColumns has `v.statistics`.
+               // I need parts[0] to be `v.statistics`.
+               // But parts split by '.'.
+               // So `v.statistics` is 2 parts.
+
+               // My buildQueryComponents implementation only handles table.col if it EXACTLY matches allowedColumn (for sorting)
+               // OR if parts[0] is allowedColumn (for JSON).
+
+               // If I have `v.statistics.viewCount`.
+               // parts: v, statistics, viewCount.
+               // parts[0] is v.
+
+               // So buildQueryComponents DOES NOT support `table.col.jsonPath`.
+               // It supports `col.jsonPath`.
+
+               // So I cannot easily alias JSON columns using `v.` prefix if I rely on `buildQueryComponents` structure.
+
+               // Options:
+               // 1. Update `buildQueryComponents` to handle `table.col` as the "column".
+               // 2. Don't prefix JSON columns, but make sure they are unambiguous.
+
+               // Are JSON columns ambiguous?
+               // `statistics` is in `youtube_channels` too.
+               // So `statistics.viewCount` IS ambiguous.
+               // SQLite will complain: "ambiguous column name: statistics".
+
+               // So I MUST prefix it: `v.statistics`.
+
+               // So I must update `buildQueryComponents` in `src/utils/db_search.ts` to handle multi-part columns.
+               // Which I have done. Now I just need to ensure the key is prefixed with 'v.'
+               delete prefixedQuery[key];
+               prefixedQuery[`v.${field}${opSuffix}`] = query[key];
+             }
            }
         }
 

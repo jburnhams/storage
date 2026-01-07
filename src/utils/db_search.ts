@@ -35,23 +35,50 @@ export function buildQueryComponents(
   let orderBy = 'created_at'; // Default
   let orderDir = 'DESC';
 
+  const resolveField = (fieldStr: string): string | null => {
+    // Exact match
+    if (allowedColumns.includes(fieldStr)) {
+      return fieldStr;
+    }
+    // Check for JSON path
+    // Try splitting by dot.
+    // If fieldStr is "v.statistics.viewCount"
+    // allowedColumns has "v.statistics"
+    // We want to match "v.statistics" and extract "viewCount".
+
+    // We iterate allowedColumns to see if fieldStr starts with one of them + dot
+    for (const allowed of allowedColumns) {
+      if (fieldStr === allowed) return allowed;
+      if (fieldStr.startsWith(allowed + '.')) {
+         const path = fieldStr.substring(allowed.length + 1);
+         if (/^[a-zA-Z0-9_.]+$/.test(path)) {
+            return `json_extract(${allowed}, '$.${path}')`;
+         }
+      }
+    }
+
+    // Fallback legacy logic: split by first dot if allowedColumns contains simple names
+    const parts = fieldStr.split('.');
+    if (parts.length > 1 && allowedColumns.includes(parts[0])) {
+         const col = parts[0];
+         const path = parts.slice(1).join('.');
+         if (/^[a-zA-Z0-9_.]+$/.test(path)) {
+            return `json_extract(${col}, '$.${path}')`;
+         }
+    }
+
+    return null;
+  };
+
   if (queryParams.sort_by) {
     if (queryParams.sort_by === 'random') {
       orderBy = 'RANDOM()';
       orderDir = '';
-    } else if (allowedColumns.includes(queryParams.sort_by) || queryParams.sort_by.includes('.')) {
-      const parts = queryParams.sort_by.split('.');
-      if (allowedColumns.includes(queryParams.sort_by)) {
-        orderBy = queryParams.sort_by;
-      } else if (parts.length === 1 && allowedColumns.includes(parts[0])) {
-        orderBy = parts[0];
-      } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
-         const col = parts[0];
-         const path = parts.slice(1).join('.');
-         if (/^[a-zA-Z0-9_.]+$/.test(path)) {
-            orderBy = `json_extract(${col}, '$.${path}')`;
-         }
-      }
+    } else {
+       const resolved = resolveField(queryParams.sort_by);
+       if (resolved) {
+         orderBy = resolved;
+       }
     }
   }
 
@@ -74,21 +101,8 @@ export function buildQueryComponents(
       }
     }
 
-    let sqlField = '';
-    const parts = field.split('.');
-    if (allowedColumns.includes(field)) {
-      sqlField = field;
-    } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
-      const col = parts[0];
-      const path = parts.slice(1).join('.');
-      if (/^[a-zA-Z0-9_.]+$/.test(path)) {
-        sqlField = `json_extract(${col}, '$.${path}')`;
-      } else {
-        continue;
-      }
-    } else {
-      continue;
-    }
+    const sqlField = resolveField(field);
+    if (!sqlField) continue;
 
     let sqlOp = '=';
     let paramValue = value;
