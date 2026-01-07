@@ -78,8 +78,9 @@ export async function bundleWorker(): Promise<string> {
   return readFileSync(join(outdir, "worker.js"), "utf-8");
 }
 
-let sharedMf: Miniflare | undefined;
-let sharedPersistPath: string | undefined;
+const SHARED_MF_KEY = Symbol.for("TEST_SHARED_MF");
+const SHARED_PATH_KEY = Symbol.for("TEST_SHARED_PATH");
+const SHARED_SCRIPT_HASH_KEY = Symbol.for("TEST_SHARED_SCRIPT_HASH");
 
 /**
  * Creates a Miniflare instance configured for testing
@@ -92,27 +93,39 @@ export async function createMiniflareInstance(options: {
   script?: string;
   isolate?: boolean;
 }): Promise<{ mf: Miniflare; persistPath: string }> {
+  const globalStore = globalThis as any;
+  const sharedMf = globalStore[SHARED_MF_KEY] as Miniflare | undefined;
+  const sharedPersistPath = globalStore[SHARED_PATH_KEY] as string | undefined;
+  const lastScriptHash = globalStore[SHARED_SCRIPT_HASH_KEY] as string | undefined;
+
+  // Simple hash to check if script content changed (length check for speed, or strict comparison)
+  const currentScriptHash = options.script ? String(options.script.length) : undefined;
+
   // If we already have a shared instance and isolation is not requested, return it.
   if (!options.isolate && sharedMf && sharedPersistPath) {
-    if (options.script) {
-        // Update the script if provided.
-        // Note: This updates the shared instance, so subsequent tests will also see this script
-        // until updated again. This is acceptable for most integration tests that use the same worker script.
-        await sharedMf.setOptions({
-            script: options.script,
-            bindings: {
-              ...await sharedMf.getBindings(),
-              ...options.secrets
-            } as any
-        });
-    } else if (options.secrets) {
-        // Update secrets if provided
-        await sharedMf.setOptions({
-            bindings: {
-                ...await sharedMf.getBindings(),
-                ...options.secrets
-            } as any
-        });
+
+    const needsUpdate = (options.script && currentScriptHash !== lastScriptHash) || options.secrets;
+
+    if (needsUpdate) {
+        if (options.script) {
+            // Update the script if provided.
+            await sharedMf.setOptions({
+                script: options.script,
+                bindings: {
+                  ...await sharedMf.getBindings(),
+                  ...options.secrets
+                } as any
+            });
+            globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
+        } else if (options.secrets) {
+            // Update secrets if provided
+            await sharedMf.setOptions({
+                bindings: {
+                    ...await sharedMf.getBindings(),
+                    ...options.secrets
+                } as any
+            });
+        }
     }
 
     return {
@@ -159,8 +172,11 @@ export async function createMiniflareInstance(options: {
     // If we ever really need to dispose it (e.g. teardown), we can use originalDispose.
     // But since it's singleton for the process, process exit cleans it up.
 
-    sharedMf = mf;
-    sharedPersistPath = persistPath;
+    globalStore[SHARED_MF_KEY] = mf;
+    globalStore[SHARED_PATH_KEY] = persistPath;
+    if (options.script) {
+        globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
+    }
   }
 
   return { mf, persistPath };
