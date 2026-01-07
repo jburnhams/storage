@@ -7,12 +7,13 @@ import { BuildTimestampBadge } from "./components/BuildTimestampBadge";
 import { StorageExplorer } from "./components/StorageExplorer";
 import { PublicShareView } from "./components/PublicShareView";
 import { CollectionsManager } from "./components/CollectionsManager";
+import { YoutubeViewer } from "./components/YoutubeViewer";
 import type { UserResponse } from "./types";
 
 export function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "collections">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "collections" | "youtube">("dashboard");
   const location = useLocation();
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export function App() {
       <div className="tabs" style={{ marginBottom: "1rem" }}>
           <button onClick={() => setActiveTab("dashboard")} disabled={activeTab === "dashboard"}>Explorer</button>
           <button onClick={() => setActiveTab("collections")} disabled={activeTab === "collections"}>Collections</button>
+          <button onClick={() => setActiveTab("youtube")} disabled={activeTab === "youtube"}>YouTube</button>
       </div>
 
       <Routes>
@@ -106,8 +108,10 @@ export function App() {
                     <hr />
                     <StorageExplorer user={user} />
                 </>
-            ) : (
+            ) : activeTab === "collections" ? (
                 <CollectionsManager user={user} />
+            ) : (
+                <YoutubeViewer />
             )
         } />
       </Routes>
