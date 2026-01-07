@@ -42,7 +42,13 @@ describe('YouTube Search Endpoint', () => {
     expect(res.status).toBe(200);
     expect(mockPrepare).toHaveBeenCalled();
     const sqlArg = mockPrepare.mock.calls[0][0];
-    expect(sqlArg).toContain('WHERE title LIKE ?');
+
+    // Updated expectations for JOIN query
+    expect(sqlArg).toContain('SELECT');
+    expect(sqlArg).toContain('FROM youtube_videos v');
+    expect(sqlArg).toContain('LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id');
+    expect(sqlArg).toContain('WHERE v.title LIKE ?');
+
     expect(mockBind).toHaveBeenCalledWith('%test%', 50, 0);
   });
 
@@ -89,7 +95,7 @@ describe('YouTube Search Endpoint', () => {
 
     expect(res.status).toBe(200);
     const sqlArg = mockPrepare.mock.calls[0][0];
-    expect(sqlArg).toContain('WHERE channel_id = ?');
+    expect(sqlArg).toContain('WHERE v.channel_id = ?');
     expect(mockBind).toHaveBeenCalledWith('UC123', 50, 0);
   });
 });
