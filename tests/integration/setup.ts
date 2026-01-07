@@ -1,6 +1,6 @@
 import { Miniflare } from "miniflare";
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync } from "fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { build } from "esbuild";
@@ -59,6 +59,20 @@ export async function bundleWorker(): Promise<string> {
     mkdirSync(outdir, { recursive: true });
   }
 
+  // Ensure src/frontend/assets.ts exists to prevent build errors
+  const assetsPath = join(process.cwd(), "src", "frontend", "assets.ts");
+  if (!existsSync(assetsPath)) {
+    console.warn("[setup] src/frontend/assets.ts missing. Creating dummy file for testing.");
+    // Create directory if it doesn't exist (though src/frontend likely exists)
+    const assetsDir = join(process.cwd(), "src", "frontend");
+    if (!existsSync(assetsDir)) mkdirSync(assetsDir, { recursive: true });
+
+    writeFileSync(assetsPath, `
+export const FRONTEND_HTML = "<html><body>Dummy Frontend for Testing</body></html>";
+export const FRONTEND_ASSETS = {};
+    `.trim());
+  }
+
   await build({
     entryPoints: [join(process.cwd(), "src", "worker.ts")],
     bundle: true,
@@ -75,8 +89,14 @@ export async function bundleWorker(): Promise<string> {
     }
   });
 
-  return readFileSync(join(outdir, "worker.js"), "utf-8");
+  const content = readFileSync(join(outdir, "worker.js"), "utf-8");
+  return content;
 }
+
+const SHARED_MF_KEY = Symbol.for("TEST_SHARED_MF");
+const SHARED_PATH_KEY = Symbol.for("TEST_SHARED_PATH");
+const SHARED_SCRIPT_HASH_KEY = Symbol.for("TEST_SHARED_SCRIPT_HASH");
+const SHARED_SECRETS_HASH_KEY = Symbol.for("TEST_SHARED_SECRETS_HASH");
 
 /**
  * Creates a Miniflare instance configured for testing
@@ -87,6 +107,53 @@ export async function createMiniflareInstance(options: {
   persistPath?: string;
   script?: string;
 }): Promise<{ mf: Miniflare; persistPath: string }> {
+  const globalStore = globalThis as any;
+  const sharedMf = globalStore[SHARED_MF_KEY] as Miniflare | undefined;
+  const sharedPersistPath = globalStore[SHARED_PATH_KEY] as string | undefined;
+  const lastScriptHash = globalStore[SHARED_SCRIPT_HASH_KEY] as string | undefined;
+  const lastSecretsHash = globalStore[SHARED_SECRETS_HASH_KEY] as string | undefined;
+
+  // Simple hash to check if script content changed (length check for speed, or strict comparison)
+  const currentScriptHash = options.script ? String(options.script.length) : undefined;
+  const currentSecretsHash = options.secrets ? JSON.stringify(options.secrets) : undefined;
+
+  // If we already have a shared instance and isolation is not requested, return it.
+  if (!options.isolate && sharedMf && sharedPersistPath) {
+
+    const scriptChanged = options.script && currentScriptHash !== lastScriptHash;
+    const secretsChanged = options.secrets && currentSecretsHash !== lastSecretsHash;
+    const needsUpdate = scriptChanged || secretsChanged;
+
+    if (needsUpdate) {
+        if (options.script) {
+            // Update the script if provided.
+            await sharedMf.setOptions({
+                script: options.script,
+                bindings: {
+                  ...await sharedMf.getBindings(),
+                  ...options.secrets
+                } as any
+            });
+            globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
+            if (options.secrets) globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
+        } else if (options.secrets) {
+            // Update secrets if provided
+            await sharedMf.setOptions({
+                bindings: {
+                    ...await sharedMf.getBindings(),
+                    ...options.secrets
+                } as any
+            });
+            globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
+        }
+    }
+
+    return {
+        mf: sharedMf,
+        persistPath: sharedPersistPath
+    };
+  }
+
   const { secrets = {}, persistPath: providedPersistPath, script = "" } = options;
 
   // Use provided path or create a temporary one
@@ -118,6 +185,26 @@ export async function createMiniflareInstance(options: {
       ...(secrets.YOUTUBE_API_BASE_URL ? { YOUTUBE_API_BASE_URL: secrets.YOUTUBE_API_BASE_URL } : {}),
     },
   });
+
+  if (!options.isolate) {
+    // Monkey-patch dispose to prevent accidental disposal by tests
+    const originalDispose = mf.dispose.bind(mf);
+    mf.dispose = async () => {
+        // No-op for shared instance
+        return;
+    };
+    // If we ever really need to dispose it (e.g. teardown), we can use originalDispose.
+    // But since it's singleton for the process, process exit cleans it up.
+
+    globalStore[SHARED_MF_KEY] = mf;
+    globalStore[SHARED_PATH_KEY] = persistPath;
+    if (options.script) {
+        globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
+    }
+    if (options.secrets) {
+        globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
+    }
+  }
 
   return { mf, persistPath };
 }

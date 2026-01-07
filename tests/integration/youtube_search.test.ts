@@ -13,7 +13,15 @@ describe('YouTube Search Integration', () => {
     const script = await bundleWorker();
 
     // 1. Create instance (db starts empty)
-    const instance = await createMiniflareInstance({ script });
+    // Pass standard secrets to avoid unnecessary Miniflare reloads (which can cause poisoned stubs)
+    const instance = await createMiniflareInstance({
+      script,
+      secrets: {
+        GOOGLE_CLIENT_ID: "test-client-id",
+        GOOGLE_CLIENT_SECRET: "test-client-secret",
+        SESSION_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      }
+    });
     mf = instance.mf;
     persistencePath = instance.persistencePath;
 

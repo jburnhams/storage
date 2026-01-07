@@ -14,6 +14,7 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    fileParallelism: false,
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
