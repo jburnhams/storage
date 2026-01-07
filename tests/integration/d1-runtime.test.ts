@@ -20,17 +20,13 @@ describe("D1 Runtime Operations", () => {
 
   beforeEach(async () => {
     await cleanDatabase(db);
+    // Note: Some tests in this file call seedTestData(db) manually.
+    // However, some tests assume a clean state (e.g., "should insert a new user", "should handle batch inserts").
+    // So we just clean here. Tests needing data will seed it.
   });
 
   afterAll(async () => {
-    await mf.dispose();
-    // Cleanup persistence directory
-    try {
-      const { rmSync } = await import("fs");
-      rmSync(persistPath, { recursive: true, force: true });
-    } catch (e) {
-      console.error("Failed to clean up D1 persistence:", e);
-    }
+    // Singleton handles cleanup
   });
 
   describe("User CRUD Operations", () => {
@@ -379,6 +375,7 @@ describe("D1 Runtime Operations", () => {
 
   describe("Transaction-like Operations", () => {
     it("should handle batch inserts", async () => {
+      // NOTE: We don't call seedTestData here to test clean state inserts
       const users = [
         ["user1@example.com", "User One"],
         ["user2@example.com", "User Two"],

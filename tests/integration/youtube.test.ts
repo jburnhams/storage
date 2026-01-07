@@ -91,6 +91,7 @@ describe('YouTube Integration', () => {
 
   beforeEach(async () => {
     db = await mf.getD1Database('DB');
+    const { cleanDatabase } = await import('./setup');
     await cleanDatabase(db);
     await seedTestData(db);
     apiCallCount = 0;
@@ -98,13 +99,7 @@ describe('YouTube Integration', () => {
 
   afterAll(async () => {
     if (mockServer) mockServer.close();
-    if (mf) await mf.dispose();
-    try {
-      const { rmSync } = await import('fs');
-      if (persistPath) rmSync(persistPath, { recursive: true, force: true });
-    } catch (e) {
-      console.error('Failed to clean up D1 persistence:', e);
-    }
+    // Singleton handles cleanup
   });
 
   it('should fetch channel from API on first request and cache it', async () => {
