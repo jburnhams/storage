@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { Env } from '../types';
 import { YoutubeService } from '../services/youtube';
 import { requireAuth } from '../middleware';
+import { buildSqlSearch } from '../utils/db_search';
 
 export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
   const channelSchema = z.object({
@@ -31,6 +32,12 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     updated_at: z.string(),
   });
 
+  const videoListSchema = z.object({
+    videos: z.array(videoSchema),
+    limit: z.number(),
+    offset: z.number(),
+  });
+
   const errorSchema = z.object({
     error: z.string(),
     message: z.string(),
@@ -43,6 +50,78 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     sample_video: videoSchema.nullable(),
     is_complete: z.boolean(),
   });
+
+  // GET /api/youtube/videos
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/api/youtube/videos',
+      tags: ['YouTube'],
+      summary: 'Search YouTube Videos',
+      description: 'Search and filter YouTube videos with advanced query options.',
+      middleware: [requireAuth] as any,
+      request: {
+        query: z.object({
+          limit: z.string().optional(),
+          offset: z.string().optional(),
+          sort_by: z.string().optional(),
+          sort_order: z.string().optional(),
+          // Allow other keys loosely? Zod doesn't strictly allow arbitrary keys by default without .passthrough()
+          // But Hono/Zod integration might strip unknown keys.
+          // To allow arbitrary filters, we might need to skip strict validation or define common filters.
+          // For now, let's explicitly add common ones to valid schema for docs, and use c.req.query() for full access.
+        }).passthrough(),
+      },
+      responses: {
+        200: {
+          description: 'Search results',
+          content: {
+            'application/json': {
+              schema: videoListSchema,
+            },
+          },
+        },
+        500: {
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: errorSchema,
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const query = c.req.query();
+        const allowedColumns = [
+          'youtube_id', 'title', 'description', 'published_at',
+          'channel_id', 'thumbnail_url', 'duration',
+          'statistics', 'created_at', 'updated_at'
+        ];
+
+        const { sql, params } = buildSqlSearch('youtube_videos', query, allowedColumns);
+
+        const { results } = await c.env.DB.prepare(sql).bind(...params).all();
+
+        // Parse JSON fields if necessary (D1 might return them as strings)
+        const parsedResults = results.map((row: any) => ({
+            ...row,
+           // Ensure these are strings if D1 returns them as such, or keep as is.
+           // Schema says TEXT, but if they were inserted as strings, they come out as strings.
+        }));
+
+        return c.json({
+          videos: parsedResults,
+          limit: query.limit ? parseInt(query.limit) : 50,
+          offset: query.offset ? parseInt(query.offset) : 0,
+        }, 200);
+      } catch (error: any) {
+        console.error('YouTube Search Error:', error);
+        return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
+      }
+    }
+  );
 
   // POST /api/youtube/channel/:id/sync
   app.openapi(
