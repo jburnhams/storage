@@ -20,7 +20,6 @@ export function YoutubeViewer() {
     const [id, setId] = useState('');
     const [type, setType] = useState<'channel' | 'video'>('video');
     const [singleData, setSingleData] = useState<YoutubeChannel | YoutubeVideo | null>(null);
-    const [autoFetch, setAutoFetch] = useState(false);
 
     // Search State
     const [searchQuery, setSearchQuery] = useState('');
@@ -39,15 +38,16 @@ export function YoutubeViewer() {
     const [syncProgress, setSyncProgress] = useState<YoutubeSyncResponse | null>(null);
     const [totalFetched, setTotalFetched] = useState(0);
 
-    const fetchSingleData = async (targetId: string, targetType: 'channel' | 'video') => {
-        if (!targetId) return;
+    const handleIdSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!id) return;
 
         setLoading(true);
         setError(null);
         setSingleData(null);
 
         try {
-            const res = await fetch(`/api/youtube/${targetType}/${targetId}`);
+            const res = await fetch(`/api/youtube/${type}/${id}`);
             const json = await res.json();
 
             if (!res.ok) {
@@ -86,17 +86,6 @@ export function YoutubeViewer() {
             fetchChannels();
         }
     }, [viewMode]);
-    const handleIdSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
-        await fetchSingleData(id, type);
-    };
-
-    useEffect(() => {
-        if (autoFetch && id && viewMode === 'id') {
-            fetchSingleData(id, type);
-            setAutoFetch(false);
-        }
-    }, [autoFetch, id, type, viewMode]);
 
     const handleVideoSearch = async (overrideOffset?: number) => {
         setLoading(true);
@@ -298,28 +287,7 @@ export function YoutubeViewer() {
                                     </td>
                                     <td style={{ padding: '0.75rem' }}>{new Date(video.published_at).toLocaleDateString()}</td>
                                     <td style={{ padding: '0.75rem' }}>{parseInt(views).toLocaleString()}</td>
-                                    <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
-                                        <button
-                                            onClick={() => {
-                                                setViewMode('id');
-                                                setType('channel');
-                                                setId(video.channel_id);
-                                                setAutoFetch(true);
-                                            }}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                color: 'var(--color-primary)',
-                                                textDecoration: 'underline',
-                                                cursor: 'pointer',
-                                                padding: 0,
-                                                fontFamily: 'inherit',
-                                                fontSize: 'inherit'
-                                            }}
-                                        >
-                                            {video.channel_title || video.channel_id}
-                                        </button>
-                                    </td>
+                                    <td style={{ padding: '0.75rem', fontSize: '0.9rem', fontFamily: 'monospace' }}>{video.channel_id}</td>
                                 </tr>
                             )
                         })}

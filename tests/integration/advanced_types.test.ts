@@ -9,23 +9,22 @@ describe('Advanced Types Integration', () => {
   let persistencePath: string;
   const SESSION_COOKIE = 'storage_session=test-session-admin';
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     const workerScript = await import('./setup').then(m => m.bundleWorker());
     const instance = await createMiniflareInstance({ script: workerScript });
     mf = instance.mf;
     persistencePath = instance.persistencePath;
-  });
 
-  beforeEach(async () => {
     // Setup database
     const db = await mf.getD1Database('DB');
-    const { cleanDatabase } = await import('./setup');
-    await cleanDatabase(db);
     await seedTestData(db);
   });
 
   afterEach(() => {
-    // Singleton handles cleanup
+    // Cleanup persistence directory
+    if (persistencePath && fs.existsSync(persistencePath)) {
+      fs.rmSync(persistencePath, { recursive: true, force: true });
+    }
   });
 
   async function createEntry(type: string, value: string, key: string) {

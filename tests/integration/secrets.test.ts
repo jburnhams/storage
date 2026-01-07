@@ -23,7 +23,7 @@ describe("Secrets and Environment Bindings", () => {
   });
 
   it("should provide access to D1 database binding", async () => {
-    const result = await createMiniflareInstance({ isolate: true });
+    const result = await createMiniflareInstance({});
     mf = result.mf;
     persistPaths.push(result.persistPath);
 
@@ -60,8 +60,7 @@ describe("Secrets and Environment Bindings", () => {
 
     const result = await createMiniflareInstance({
       secrets: testSecrets,
-      script: testScript,
-      isolate: true
+      script: testScript
     });
     mf = result.mf;
     persistPaths.push(result.persistPath);
@@ -91,8 +90,7 @@ describe("Secrets and Environment Bindings", () => {
 
     // Initialize with script directly to ensure DB binding is preserved/set correctly
     const result = await createMiniflareInstance({
-      script: testScript,
-      isolate: true
+      script: testScript
     });
     mf = result.mf;
     persistPaths.push(result.persistPath);
@@ -122,8 +120,7 @@ describe("Secrets and Environment Bindings", () => {
       secrets: {
         SESSION_SECRET: validSessionSecret,
       },
-      script: testScript,
-      isolate: true
+      script: testScript
     });
     mf = result.mf;
     persistPaths.push(result.persistPath);
@@ -164,8 +161,7 @@ describe("Secrets and Environment Bindings", () => {
 
     const result = await createMiniflareInstance({
       secrets: testSecrets,
-      script: testScript,
-      isolate: true
+      script: testScript
     });
     mf = result.mf;
     persistPaths.push(result.persistPath);
@@ -190,8 +186,7 @@ describe("Secrets and Environment Bindings", () => {
     // Test that we can create an instance with custom secrets
     const result = await createMiniflareInstance({
       secrets: { GOOGLE_CLIENT_ID: "custom-instance-id" },
-      script: testScript,
-      isolate: true
+      script: testScript
     });
     mf = result.mf;
     persistPaths.push(result.persistPath);

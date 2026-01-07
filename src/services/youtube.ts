@@ -69,28 +69,26 @@ export class YoutubeService {
     return channelId;
   }
 
-  async getChannel(idOrHandle: string, forceRefresh: boolean = false): Promise<YoutubeChannel> {
+  async getChannel(idOrHandle: string): Promise<YoutubeChannel> {
     let id = idOrHandle;
 
-    if (!forceRefresh) {
-        // 1. Check DB by ID
-        let cached = await this.env.DB.prepare(
-          'SELECT * FROM youtube_channels WHERE youtube_id = ?'
-        ).bind(id).first<YoutubeChannel>();
+    // 1. Check DB by ID
+    let cached = await this.env.DB.prepare(
+      'SELECT * FROM youtube_channels WHERE youtube_id = ?'
+    ).bind(id).first<YoutubeChannel>();
 
-        if (cached) {
-          return cached;
-        }
+    if (cached) {
+      return cached;
+    }
 
-        // 2. Check DB by custom_url (handle)
-        // Note: custom_url stores the handle (e.g. @Handle)
-        cached = await this.env.DB.prepare(
-          'SELECT * FROM youtube_channels WHERE custom_url = ? OR custom_url = ?'
-        ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel>();
+    // 2. Check DB by custom_url (handle)
+    // Note: custom_url stores the handle (e.g. @Handle)
+    cached = await this.env.DB.prepare(
+      'SELECT * FROM youtube_channels WHERE custom_url = ? OR custom_url = ?'
+    ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel>();
 
-        if (cached) {
-          return cached;
-        }
+    if (cached) {
+      return cached;
     }
 
     // 3. Resolve ID if needed
@@ -99,14 +97,12 @@ export class YoutubeService {
         id = await this.resolveChannelId(idOrHandle);
 
         // Check DB again with resolved ID
-        if (!forceRefresh) {
-            let cached = await this.env.DB.prepare(
-              'SELECT * FROM youtube_channels WHERE youtube_id = ?'
-            ).bind(id).first<YoutubeChannel>();
+        cached = await this.env.DB.prepare(
+          'SELECT * FROM youtube_channels WHERE youtube_id = ?'
+        ).bind(id).first<YoutubeChannel>();
 
-            if (cached) {
-              return cached;
-            }
+        if (cached) {
+          return cached;
         }
       } catch (e) {
         // If resolution fails, maybe it IS a weird ID?
@@ -137,29 +133,16 @@ export class YoutubeService {
       thumbnail_url: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
       published_at: item.snippet.publishedAt,
       statistics: JSON.stringify(item.statistics),
-      total_video_count: parseInt(item.statistics.videoCount, 10),
       raw_json: JSON.stringify(item),
       created_at: now,
       updated_at: now
     };
 
-    // 5. Store in DB (Upsert)
-    // We use ON CONFLICT DO UPDATE to preserve fields we aren't updating if we wanted,
-    // but here we are fetching fresh data, so we generally want to update everything except maybe created_at.
+    // 5. Store in DB
     await this.env.DB.prepare(
       `INSERT INTO youtube_channels
-       (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, total_video_count, raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(youtube_id) DO UPDATE SET
-         title=excluded.title,
-         description=excluded.description,
-         custom_url=excluded.custom_url,
-         thumbnail_url=excluded.thumbnail_url,
-         published_at=excluded.published_at,
-         statistics=excluded.statistics,
-         total_video_count=excluded.total_video_count,
-         raw_json=excluded.raw_json,
-         updated_at=excluded.updated_at`
+       (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       channel.youtube_id,
       channel.title,
@@ -168,7 +151,6 @@ export class YoutubeService {
       channel.thumbnail_url,
       channel.published_at,
       channel.statistics,
-      channel.total_video_count,
       channel.raw_json,
       channel.created_at,
       channel.updated_at
@@ -214,21 +196,11 @@ export class YoutubeService {
       updated_at: now
     };
 
-    // 3. Store in DB (Upsert)
+    // 3. Store in DB
     await this.env.DB.prepare(
       `INSERT INTO youtube_videos
        (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(youtube_id) DO UPDATE SET
-         title=excluded.title,
-         description=excluded.description,
-         published_at=excluded.published_at,
-         channel_id=excluded.channel_id,
-         thumbnail_url=excluded.thumbnail_url,
-         duration=excluded.duration,
-         statistics=excluded.statistics,
-         raw_json=excluded.raw_json,
-         updated_at=excluded.updated_at`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       video.youtube_id,
       video.title,
@@ -253,34 +225,8 @@ export class YoutubeService {
     sample_video: YoutubeVideo | null;
     is_complete: boolean;
   }> {
-    // 1. Force update channel details (including total_video_count)
-    await this.getChannel(channelId, true);
-
-    // 2. Fetch full channel record from DB to ensure we have persisted sync state
-    // (getChannel returns fresh API data which lacks sync_start_date/etc)
-    const channel = await this.env.DB.prepare('SELECT * FROM youtube_channels WHERE youtube_id = ?').bind(channelId).first<YoutubeChannel>();
-
-    if (!channel) {
-        throw new Error(`Channel not found: ${channelId}`);
-    }
-
+    const channel = await this.getChannel(channelId);
     const now = new Date();
-    const nowIso = now.toISOString();
-
-    // Check if we already have enough videos
-    if (channel.total_video_count !== undefined && channel.total_video_count !== null) {
-        const countResult = await this.env.DB.prepare('SELECT COUNT(*) as count FROM youtube_videos WHERE channel_id = ?').bind(channelId).first<{ count: number }>();
-        if (countResult && countResult.count >= channel.total_video_count) {
-             return {
-                count: 0,
-                range_start: nowIso,
-                range_end: nowIso,
-                sample_video: null,
-                is_complete: true
-             };
-        }
-    }
-
     const oneDay = 24 * 60 * 60 * 1000;
     const oneMonth = 30 * oneDay;
 
@@ -384,19 +330,9 @@ export class YoutubeService {
 
         if (videosRes.items) {
            const insertStmt = this.env.DB.prepare(
-            `INSERT INTO youtube_videos
+            `INSERT OR REPLACE INTO youtube_videos
              (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(youtube_id) DO UPDATE SET
-               title=excluded.title,
-               description=excluded.description,
-               published_at=excluded.published_at,
-               channel_id=excluded.channel_id,
-               thumbnail_url=excluded.thumbnail_url,
-               duration=excluded.duration,
-               statistics=excluded.statistics,
-               raw_json=excluded.raw_json,
-               updated_at=excluded.updated_at`
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
            );
 
            const batch = [];
@@ -436,6 +372,7 @@ export class YoutubeService {
     // Update Channel Sync State
     let newSyncStart = currentSyncStart;
     let newSyncEnd = currentSyncEnd;
+    const nowIso = new Date().toISOString();
 
     if (!newSyncEnd || searchEnd > newSyncEnd) {
         newSyncEnd = searchEnd;

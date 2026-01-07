@@ -3,18 +3,11 @@ export interface SearchResult {
   params: any[];
 }
 
-export interface QueryComponents {
-  whereSql: string;
-  orderSql: string;
-  limit: number;
-  offset: number;
-  params: any[];
-}
-
-export function buildQueryComponents(
+export function buildSqlSearch(
+  tableName: string,
   queryParams: Record<string, string>,
   allowedColumns: string[]
-): QueryComponents {
+): SearchResult {
   const whereClauses: string[] = [];
   const params: any[] = [];
   const validOps = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains'];
@@ -35,50 +28,24 @@ export function buildQueryComponents(
   let orderBy = 'created_at'; // Default
   let orderDir = 'DESC';
 
-  const resolveField = (fieldStr: string): string | null => {
-    // Exact match
-    if (allowedColumns.includes(fieldStr)) {
-      return fieldStr;
-    }
-    // Check for JSON path
-    // Try splitting by dot.
-    // If fieldStr is "v.statistics.viewCount"
-    // allowedColumns has "v.statistics"
-    // We want to match "v.statistics" and extract "viewCount".
-
-    // We iterate allowedColumns to see if fieldStr starts with one of them + dot
-    for (const allowed of allowedColumns) {
-      if (fieldStr === allowed) return allowed;
-      if (fieldStr.startsWith(allowed + '.')) {
-         const path = fieldStr.substring(allowed.length + 1);
-         if (/^[a-zA-Z0-9_.]+$/.test(path)) {
-            return `json_extract(${allowed}, '$.${path}')`;
-         }
-      }
-    }
-
-    // Fallback legacy logic: split by first dot if allowedColumns contains simple names
-    const parts = fieldStr.split('.');
-    if (parts.length > 1 && allowedColumns.includes(parts[0])) {
-         const col = parts[0];
-         const path = parts.slice(1).join('.');
-         if (/^[a-zA-Z0-9_.]+$/.test(path)) {
-            return `json_extract(${col}, '$.${path}')`;
-         }
-    }
-
-    return null;
-  };
-
   if (queryParams.sort_by) {
     if (queryParams.sort_by === 'random') {
       orderBy = 'RANDOM()';
-      orderDir = '';
-    } else {
-       const resolved = resolveField(queryParams.sort_by);
-       if (resolved) {
-         orderBy = resolved;
-       }
+      orderDir = ''; // Random doesn't use ASC/DESC in the same way usually, but usually strictly RANDOM()
+    } else if (allowedColumns.includes(queryParams.sort_by) || queryParams.sort_by.includes('.')) {
+      // Allow sorting by valid columns or JSON paths if the base column is allowed
+      const parts = queryParams.sort_by.split('.');
+      if (parts.length === 1 && allowedColumns.includes(parts[0])) {
+        orderBy = parts[0];
+      } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
+         // Handle JSON sort: json_extract(col, '$.path')
+         const col = parts[0];
+         const path = parts.slice(1).join('.');
+         // Sanitize path to prevent injection
+         if (/^[a-zA-Z0-9_.]+$/.test(path)) {
+            orderBy = `json_extract(${col}, '$.${path}')`;
+         }
+      }
     }
   }
 
@@ -89,6 +56,10 @@ export function buildQueryComponents(
   // Iterate all params for filters
   for (const [key, value] of Object.entries(queryParams)) {
     if (['limit', 'offset', 'sort_by', 'sort_order'].includes(key)) continue;
+
+    // Determine field and op
+    // Strategy: Try to match known suffixes.
+    // keys could be: "title_contains", "view_count_gt", "statistics.viewCount_gt"
 
     let field = key;
     let op = 'eq';
@@ -101,9 +72,27 @@ export function buildQueryComponents(
       }
     }
 
-    const sqlField = resolveField(field);
-    if (!sqlField) continue;
+    // Check if field is valid
+    // It is valid if it is in allowedColumns OR it is a json path where root is in allowedColumns
+    let sqlField = '';
+    const parts = field.split('.');
+    if (allowedColumns.includes(field)) {
+      sqlField = field;
+    } else if (parts.length > 1 && allowedColumns.includes(parts[0])) {
+      // JSON extraction
+      const col = parts[0];
+      const path = parts.slice(1).join('.');
+      // Sanitize path to prevent injection
+      if (/^[a-zA-Z0-9_.]+$/.test(path)) {
+        sqlField = `json_extract(${col}, '$.${path}')`;
+      } else {
+        continue;
+      }
+    } else {
+      continue; // Invalid field, skip
+    }
 
+    // Add clause
     let sqlOp = '=';
     let paramValue = value;
 
@@ -120,22 +109,26 @@ export function buildQueryComponents(
         break;
     }
 
+    // For numeric comparisons on JSON text fields, we might need CAST if it's strictly numbers,
+    // but SQLite is loose. However, if the user explicitly wants numeric comparison,
+    // they pass a number string. D1/SQLite stores everything as text mostly if declared TEXT,
+    // but json_extract returns values that can be mixed.
+    // Let's rely on SQLite's affinity.
+
     whereClauses.push(`${sqlField} ${sqlOp} ?`);
     params.push(paramValue);
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+  // Construct final SQL
+  // Note: D1 doesn't support named params in the binding list easily if we mix things,
+  // but using '?' is standard.
+
   const orderSql = orderBy === 'RANDOM()' ? 'ORDER BY RANDOM()' : `ORDER BY ${orderBy} ${orderDir}`;
 
-  return { whereSql, orderSql, limit, offset, params };
-}
-
-export function buildSqlSearch(
-  tableName: string,
-  queryParams: Record<string, string>,
-  allowedColumns: string[]
-): SearchResult {
-  const { whereSql, orderSql, limit, offset, params } = buildQueryComponents(queryParams, allowedColumns);
   const sql = `SELECT * FROM ${tableName} ${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
-  return { sql, params: [...params, limit, offset] };
+  params.push(limit, offset);
+
+  return { sql, params };
 }
