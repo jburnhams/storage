@@ -176,6 +176,11 @@ export interface YoutubeChannel {
   raw_json: string; // JSON
   created_at: string;
   updated_at: string;
+  sync_start_date?: string | null;
+  sync_end_date?: string | null;
+  last_sync_at?: string | null;
+  upload_playlist_id?: string | null;
+  last_sync_token?: string | null;
 }
 
 export interface YoutubeVideo {

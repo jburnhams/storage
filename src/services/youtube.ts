@@ -50,23 +50,29 @@ export class YoutubeService {
       return input;
     }
 
-    // 2. Search
-    const searchRes = await this.fetchFromApi<YoutubeListResponse<YoutubeSearchResource>>('search', {
-      q: input,
-      type: 'channel',
-      part: 'id',
-      maxResults: '1'
-    });
+    // 2. Try to resolve using forHandle
+    // Note: input should be a handle, but if it doesn't start with @, maybe we prepend?
+    // The user said "looking up channel id from a name".
+    // If we assume strict handle resolution, we might want to ensure it works.
+    // YouTube's forHandle takes the handle string.
 
-    if (!searchRes.items || searchRes.items.length === 0) {
-      throw new Error(`Channel not found for: ${input}`);
+    // Attempt resolution
+    try {
+        const listRes = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
+            forHandle: input,
+            part: 'id'
+        });
+
+        if (listRes.items && listRes.items.length > 0) {
+            return listRes.items[0].id;
+        }
+    } catch (e) {
+        // Fall through or re-throw?
+        console.error("Error resolving handle:", e);
     }
 
-    const channelId = searchRes.items[0].id.channelId;
-    if (!channelId) {
-        throw new Error(`Channel ID not found in search results for: ${input}`);
-    }
-    return channelId;
+    // If forHandle failed, we throw. We removed the expensive 'search' fallback.
+    throw new Error(`Channel not found for: ${input}`);
   }
 
   async getChannel(idOrHandle: string): Promise<YoutubeChannel> {
@@ -82,7 +88,6 @@ export class YoutubeService {
     }
 
     // 2. Check DB by custom_url (handle)
-    // Note: custom_url stores the handle (e.g. @Handle)
     cached = await this.env.DB.prepare(
       'SELECT * FROM youtube_channels WHERE custom_url = ? OR custom_url = ?'
     ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel>();
@@ -105,9 +110,6 @@ export class YoutubeService {
           return cached;
         }
       } catch (e) {
-        // If resolution fails, maybe it IS a weird ID?
-        // But for now, propagate error or fall through to try as ID (which will fail)
-        // Let's propagate.
         throw e;
       }
     }
@@ -115,7 +117,7 @@ export class YoutubeService {
     // 4. Fetch from API using ID
     const data = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
       id: id,
-      part: 'snippet,statistics'
+      part: 'snippet,statistics,contentDetails' // Added contentDetails for upload playlist
     });
 
     if (!data.items || data.items.length === 0) {
@@ -124,6 +126,17 @@ export class YoutubeService {
 
     const item = data.items[0];
     const now = new Date().toISOString();
+
+    // Extract upload playlist ID
+    // The type definition for contentDetails needs to support relatedPlaylists
+    // We cast to any or update types. Let's update types properly in the future but for now I'll cast or assume it's there.
+    // Actually, I should check my types.ts. YoutubeChannelResource contentDetails?
+    // I need to update types if I want type safety.
+    // Ideally I should update types.ts first, but I already did. Let's check what I added.
+    // I didn't add relatedPlaylists to types. Let's use `any` cast for now to proceed, or update types.
+    // Wait, I can just read it as `any`.
+    const contentDetails = item.contentDetails as any;
+    const uploadPlaylistId = contentDetails?.relatedPlaylists?.uploads || null;
 
     const channel: YoutubeChannel = {
       youtube_id: item.id,
@@ -135,14 +148,26 @@ export class YoutubeService {
       statistics: JSON.stringify(item.statistics),
       raw_json: JSON.stringify(item),
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      upload_playlist_id: uploadPlaylistId,
+      last_sync_token: null
     };
 
     // 5. Store in DB
+    // We use INSERT OR REPLACE logic, effectively upserting
     await this.env.DB.prepare(
       `INSERT INTO youtube_channels
-       (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at, upload_playlist_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(youtube_id) DO UPDATE SET
+       title=excluded.title,
+       description=excluded.description,
+       custom_url=excluded.custom_url,
+       thumbnail_url=excluded.thumbnail_url,
+       statistics=excluded.statistics,
+       raw_json=excluded.raw_json,
+       updated_at=excluded.updated_at,
+       upload_playlist_id=excluded.upload_playlist_id`
     ).bind(
       channel.youtube_id,
       channel.title,
@@ -153,7 +178,8 @@ export class YoutubeService {
       channel.statistics,
       channel.raw_json,
       channel.created_at,
-      channel.updated_at
+      channel.updated_at,
+      channel.upload_playlist_id
     ).run();
 
     return channel;
@@ -220,184 +246,199 @@ export class YoutubeService {
 
   async syncChannelVideos(channelId: string): Promise<{
     count: number;
-    range_start: string;
-    range_end: string;
+    range_start: string | null;
+    range_end: string | null;
     sample_video: YoutubeVideo | null;
     is_complete: boolean;
   }> {
-    const channel = await this.getChannel(channelId);
-    const now = new Date();
-    const oneDay = 24 * 60 * 60 * 1000;
-    const oneMonth = 30 * oneDay;
+    // 1. Get Channel (ensure we have upload_playlist_id)
+    let channel = await this.getChannel(channelId);
 
-    let searchStart: Date;
-    let searchEnd: Date;
-    let direction: 'forward' | 'backward' = 'backward';
+    // If upload_playlist_id is missing (old record), force refresh
+    if (!channel.upload_playlist_id) {
+         // Force refresh by calling API manually or just call getChannel?
+         // Since getChannel reads DB first, we need to bypass or ensure update.
+         // Let's manually refetch and update.
+         const data = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
+            id: channelId,
+            part: 'snippet,statistics,contentDetails'
+         });
+         if (data.items && data.items.length > 0) {
+             const item = data.items[0];
+             const contentDetails = item.contentDetails as any;
+             channel.upload_playlist_id = contentDetails?.relatedPlaylists?.uploads || null;
 
-    // Parse existing sync dates or defaults
-    const currentSyncStart = channel.sync_start_date ? new Date(channel.sync_start_date) : null;
-    const currentSyncEnd = channel.sync_end_date ? new Date(channel.sync_end_date) : null;
-    const publishedAt = new Date(channel.published_at);
-
-    // Determine strategy
-    if (!currentSyncEnd || !currentSyncStart) {
-      // First run: Check last month
-      searchEnd = now;
-      searchStart = new Date(now.getTime() - oneMonth);
-      direction = 'backward';
-    } else {
-      // Check if we need to catch up forward (e.g., if last sync end is > 1 day ago)
-      if (now.getTime() - currentSyncEnd.getTime() > oneDay) {
-        searchStart = currentSyncEnd;
-        searchEnd = now;
-        direction = 'forward';
-      } else {
-        // Go backwards
-        searchEnd = currentSyncStart;
-        searchStart = new Date(searchEnd.getTime() - oneMonth);
-        direction = 'backward';
-      }
+             // Update DB
+             await this.env.DB.prepare('UPDATE youtube_channels SET upload_playlist_id = ? WHERE youtube_id = ?')
+                .bind(channel.upload_playlist_id, channelId).run();
+         }
     }
 
-    // Clamp searchStart to channel creation
-    if (searchStart < publishedAt) {
-      searchStart = publishedAt;
+    if (!channel.upload_playlist_id) {
+        throw new Error("Could not determine upload playlist ID for channel");
     }
 
-    // Safety check: if start >= end (and not just same millisecond quirk), we might be done or overlapping
-    if (searchStart >= searchEnd) {
-        if (direction === 'backward' && searchStart.getTime() === publishedAt.getTime()) {
-             return {
-                count: 0,
-                range_start: searchStart.toISOString(),
-                range_end: searchEnd.toISOString(),
-                sample_video: null,
-                is_complete: true
-             };
-        }
-        // Minimal window to ensure API validity
-        searchStart = new Date(searchEnd.getTime() - 1000);
-    }
-
-
-    // Call Search API
-    // Note: publishedAfter is inclusive, publishedBefore is exclusive usually, but RFC 3339
-    const searchParams: Record<string, string> = {
-      channelId: channelId,
-      part: 'id,snippet',
-      type: 'video',
-      order: 'date',
-      publishedAfter: searchStart.toISOString(),
-      publishedBefore: searchEnd.toISOString(),
-      maxResults: '50' // Max allowed
-    };
-
-    let videoIds: string[] = [];
-    let nextPageToken: string | undefined;
-
-    // We need to loop through pages within this date range because maxResults is 50
-    // But to prevent timeouts, we limit the pages per sync call too.
-    // Let's grab up to 500 videos (10 pages) per sync call.
-    let pagesFetched = 0;
-    const MAX_PAGES_PER_SYNC = 10;
-
-    do {
-      if (nextPageToken) searchParams.pageToken = nextPageToken;
-
-      const searchRes = await this.fetchFromApi<YoutubeListResponse<YoutubeSearchResource>>('search', searchParams);
-
-      if (searchRes.items) {
-        searchRes.items.forEach(item => {
-          if (item.id.videoId) videoIds.push(item.id.videoId);
-        });
-      }
-
-      nextPageToken = searchRes.nextPageToken;
-      pagesFetched++;
-    } while (nextPageToken && pagesFetched < MAX_PAGES_PER_SYNC);
+    const playlistId = channel.upload_playlist_id;
+    const lastSyncToken = channel.last_sync_token;
 
     let sampleVideo: YoutubeVideo | null = null;
     let savedCount = 0;
 
-    if (videoIds.length > 0) {
-      // Fetch details in batches of 50
-      for (let i = 0; i < videoIds.length; i += 50) {
-        const batchIds = videoIds.slice(i, i + 50);
-        const videosRes = await this.fetchFromApi<YoutubeListResponse<YoutubeVideoResource>>('videos', {
-          id: batchIds.join(','),
-          part: 'snippet,contentDetails,statistics'
-        });
+    // We will collect IDs to fetch.
+    // Phase 1: Always fetch Page 1 (Latest)
+    // Phase 2: If lastSyncToken exists, fetch that Page (Backfill)
 
-        if (videosRes.items) {
-           const insertStmt = this.env.DB.prepare(
-            `INSERT OR REPLACE INTO youtube_videos
-             (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-           );
+    // We use a Set to avoid duplicates if Page 1 overlaps with Backfill token (unlikely but possible)
+    const videoIdsToFetch = new Set<string>();
+    let newBackfillToken: string | null = lastSyncToken || null;
 
-           const batch = [];
-           const nowIso = new Date().toISOString();
+    // --- Phase 1: Latest ---
+    const latestRes = await this.fetchFromApi<YoutubeListResponse<any>>('playlistItems', {
+        playlistId: playlistId,
+        part: 'snippet',
+        maxResults: '50'
+    });
 
-           for (const item of videosRes.items) {
-             const v: YoutubeVideo = {
-                youtube_id: item.id,
-                title: item.snippet.title,
-                description: item.snippet.description,
-                published_at: item.snippet.publishedAt,
-                channel_id: item.snippet.channelId,
-                thumbnail_url: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
-                duration: item.contentDetails.duration,
-                statistics: JSON.stringify(item.statistics),
-                raw_json: JSON.stringify(item),
-                created_at: nowIso, // In a replace, we ideally keep created_at, but simplistic replace overwrites. Accepted for cache.
-                updated_at: nowIso
-             };
-
-             if (!sampleVideo) sampleVideo = v; // Grab first one as sample
-
-             batch.push(insertStmt.bind(
-                v.youtube_id, v.title, v.description, v.published_at, v.channel_id,
-                v.thumbnail_url, v.duration, v.statistics, v.raw_json, v.created_at, v.updated_at
-             ));
-           }
-
-           if (batch.length > 0) {
-             await this.env.DB.batch(batch);
-             savedCount += batch.length;
-           }
+    if (latestRes.items) {
+        for (const item of latestRes.items) {
+            const vid = item.snippet?.resourceId?.videoId;
+            if (vid) videoIdsToFetch.add(vid);
         }
-      }
     }
 
-    // Update Channel Sync State
-    let newSyncStart = currentSyncStart;
-    let newSyncEnd = currentSyncEnd;
+    // If we have no backfill token, the "nextPageToken" from latestRes is our start for backfill next time.
+    if (!lastSyncToken && latestRes.nextPageToken) {
+        newBackfillToken = latestRes.nextPageToken;
+    }
+
+    // --- Phase 2: Backfill ---
+    // Only if we have a valid token (and it's not the same as what we just fetched, though hard to know)
+    // If we just started (no lastSyncToken), we already got page 1.
+    // If we have lastSyncToken, we fetch it.
+    if (lastSyncToken) {
+        try {
+            const backfillRes = await this.fetchFromApi<YoutubeListResponse<any>>('playlistItems', {
+                playlistId: playlistId,
+                part: 'snippet',
+                maxResults: '50',
+                pageToken: lastSyncToken
+            });
+
+            if (backfillRes.items) {
+                for (const item of backfillRes.items) {
+                    const vid = item.snippet?.resourceId?.videoId;
+                    if (vid) videoIdsToFetch.add(vid);
+                }
+            }
+
+            // Update token for next time
+            newBackfillToken = backfillRes.nextPageToken || null; // If null, we reached end
+        } catch (e: any) {
+            // If token is invalid (400), we might want to reset it?
+            if (e.message && e.message.includes('400')) {
+                console.warn("Invalid page token, resetting backfill token.");
+                newBackfillToken = null; // Start over next time (or from page 2 of fresh?)
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    // --- Processing ---
+    // Filter out existing videos to save cost
+    const uniqueIds = Array.from(videoIdsToFetch);
+    const idsToFetchDetails: string[] = [];
+
+    // Check DB for existence
+    // We can do a batched check or one by one. Batched is better.
+    // SQLite limits parameters, but 100 is fine.
+    if (uniqueIds.length > 0) {
+        // Chunk checks
+        for (let i = 0; i < uniqueIds.length; i += 50) {
+            const batch = uniqueIds.slice(i, i + 50);
+            const placeholders = batch.map(() => '?').join(',');
+            const existing = await this.env.DB.prepare(
+                `SELECT youtube_id FROM youtube_videos WHERE youtube_id IN (${placeholders})`
+            ).bind(...batch).all<{youtube_id: string}>();
+
+            const existingSet = new Set(existing.results.map(r => r.youtube_id));
+
+            for (const id of batch) {
+                if (!existingSet.has(id)) {
+                    idsToFetchDetails.push(id);
+                }
+            }
+        }
+    }
+
+    // Fetch Details for missing videos
+    if (idsToFetchDetails.length > 0) {
+        for (let i = 0; i < idsToFetchDetails.length; i += 50) {
+            const batchIds = idsToFetchDetails.slice(i, i + 50);
+            const videosRes = await this.fetchFromApi<YoutubeListResponse<YoutubeVideoResource>>('videos', {
+                id: batchIds.join(','),
+                part: 'snippet,contentDetails,statistics'
+            });
+
+            if (videosRes.items) {
+                const insertStmt = this.env.DB.prepare(
+                    `INSERT OR REPLACE INTO youtube_videos
+                     (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                );
+
+                const batch = [];
+                const nowIso = new Date().toISOString();
+
+                for (const item of videosRes.items) {
+                     const v: YoutubeVideo = {
+                        youtube_id: item.id,
+                        title: item.snippet.title,
+                        description: item.snippet.description,
+                        published_at: item.snippet.publishedAt,
+                        channel_id: item.snippet.channelId,
+                        thumbnail_url: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
+                        duration: item.contentDetails.duration,
+                        statistics: JSON.stringify(item.statistics),
+                        raw_json: JSON.stringify(item),
+                        created_at: nowIso,
+                        updated_at: nowIso
+                     };
+
+                     if (!sampleVideo) sampleVideo = v;
+
+                     batch.push(insertStmt.bind(
+                        v.youtube_id, v.title, v.description, v.published_at, v.channel_id,
+                        v.thumbnail_url, v.duration, v.statistics, v.raw_json, v.created_at, v.updated_at
+                     ));
+                }
+
+                if (batch.length > 0) {
+                    await this.env.DB.batch(batch);
+                    savedCount += batch.length;
+                }
+            }
+        }
+    }
+
+    // Update Channel State
     const nowIso = new Date().toISOString();
-
-    if (!newSyncEnd || searchEnd > newSyncEnd) {
-        newSyncEnd = searchEnd;
-    }
-    if (!newSyncStart || searchStart < newSyncStart) {
-        newSyncStart = searchStart;
-    }
-
     await this.env.DB.prepare(
         `UPDATE youtube_channels
-         SET sync_start_date = ?, sync_end_date = ?, last_sync_at = ?
+         SET last_sync_token = ?, last_sync_at = ?
          WHERE youtube_id = ?`
     ).bind(
-        newSyncStart?.toISOString(),
-        newSyncEnd?.toISOString(),
+        newBackfillToken,
         nowIso,
         channelId
     ).run();
 
     return {
         count: savedCount,
-        range_start: searchStart.toISOString(),
-        range_end: searchEnd.toISOString(),
+        range_start: null, // Deprecated concept
+        range_end: null,   // Deprecated concept
         sample_video: sampleVideo,
-        is_complete: (newSyncStart && newSyncStart.getTime() <= publishedAt.getTime()) || false
+        is_complete: newBackfillToken === null // If null, we exhausted the list
     };
   }
 }
