@@ -121,6 +121,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           offset: z.string().optional(),
           sort_by: z.string().optional(),
           sort_order: z.string().optional(),
+          channel_id: z.string().optional(),
           // Allow other keys loosely? Zod doesn't strictly allow arbitrary keys by default without .passthrough()
           // But Hono/Zod integration might strip unknown keys.
           // To allow arbitrary filters, we might need to skip strict validation or define common filters.
