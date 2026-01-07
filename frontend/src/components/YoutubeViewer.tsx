@@ -67,10 +67,17 @@ export function YoutubeViewer() {
             const res = await fetch('/api/youtube/channels');
             if (res.ok) {
                 const data = await res.json();
-                setChannels(data.channels);
+                if (data && Array.isArray(data.channels)) {
+                    setChannels(data.channels);
+                } else {
+                    setChannels([]);
+                }
+            } else {
+                 setChannels([]);
             }
         } catch (e) {
             console.error('Failed to fetch channels', e);
+            setChannels([]);
         }
     };
 
@@ -358,7 +365,7 @@ export function YoutubeViewer() {
                             style={{ width: '200px' }}
                         >
                             <option value="">All Channels</option>
-                            {channels.map(c => (
+                            {(channels || []).map(c => (
                                 <option key={c.youtube_id} value={c.youtube_id}>{c.title}</option>
                             ))}
                         </select>
