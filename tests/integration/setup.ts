@@ -38,7 +38,6 @@ export function applyWranglerMigrations(persistPath: string) {
   try {
     // We use --no-confirm to avoid interactive prompts (wrangler v3.114.x doesn't support --no-confirm, but it falls back to yes in non-interactive)
     // We use --local because we are testing locally
-    // Removed --no-confirm as it's causing "Unknown argument: confirm" errors with the installed wrangler version
     execSync(
       `npx wrangler d1 migrations apply DB --local --persist-to "${persistPath}"`,
       { stdio: "inherit" } // Inherit stdio to see output in tests if needed
