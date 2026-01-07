@@ -26,7 +26,11 @@ export class YoutubeService {
       url.searchParams.set(key, value);
     }
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Referer': 'storage.jonathanburnhams.com'
+      }
+    });
 
     if (!response.ok) {
         if (response.status === 404) {
