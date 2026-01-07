@@ -21,7 +21,7 @@ describe('YouTube Sync Integration', () => {
         if (url.pathname.includes('/channels')) {
              res.end(JSON.stringify({
                  items: [{
-                     id: 'UC_TEST',
+                     id: 'UC_TEST_1234567890abcdef',
                      snippet: {
                          title: 'Test Channel',
                          description: 'Test Desc',
@@ -54,7 +54,7 @@ describe('YouTube Sync Integration', () => {
                         title: 'Video 1',
                         description: 'Desc',
                         publishedAt: new Date().toISOString(),
-                        channelId: 'UC_TEST',
+                        channelId: 'UC_TEST_1234567890abcdef',
                         thumbnails: { default: { url: 'http://thumb' } }
                     },
                     contentDetails: { duration: 'PT1M' },
@@ -98,9 +98,10 @@ describe('YouTube Sync Integration', () => {
   it('syncs channel videos via API with authentication', async () => {
     // 1. Authenticate with session cookie from seed data
     const cookie = 'storage_session=test-session-admin';
+    const validId = 'UC_TEST_1234567890abcdef';
 
     // 2. Call Sync Endpoint
-    const res = await mf.dispatchFetch('http://localhost:8787/api/youtube/channel/UC_TEST/sync', {
+    const res = await mf.dispatchFetch(`http://localhost:8787/api/youtube/channel/${validId}/sync`, {
         method: 'POST',
         headers: {
             'Cookie': cookie
@@ -124,7 +125,7 @@ describe('YouTube Sync Integration', () => {
     expect(video).toBeDefined();
     expect(video.title).toBe('Video 1');
 
-    const channel = await db.prepare('SELECT * FROM youtube_channels WHERE youtube_id = ?').bind('UC_TEST').first<any>();
+    const channel = await db.prepare('SELECT * FROM youtube_channels WHERE youtube_id = ?').bind('UC_TEST_1234567890abcdef').first<any>();
     expect(channel).toBeDefined();
     expect(channel.sync_start_date).not.toBeNull();
   });
