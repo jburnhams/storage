@@ -28,6 +28,11 @@ describe('YouTube Sync Integration', () => {
                          publishedAt: new Date(Date.now() - 365*24*60*60*1000).toISOString(),
                          thumbnails: { default: { url: 'http://thumb' } }
                      },
+                     contentDetails: {
+                        relatedPlaylists: {
+                            uploads: 'UU_TEST_1234567890abcdef'
+                        }
+                     },
                      statistics: { videoCount: '10' }
                  }]
              }));
@@ -62,6 +67,18 @@ describe('YouTube Sync Integration', () => {
                 }]
             }));
             return;
+        }
+
+        if (url.pathname.includes('/playlistItems')) {
+             res.end(JSON.stringify({
+                 items: [{
+                     snippet: {
+                         resourceId: { videoId: 'VIDEO_1' }
+                     }
+                 }],
+                 nextPageToken: null
+             }));
+             return;
         }
 
         res.writeHead(404);
@@ -128,6 +145,6 @@ describe('YouTube Sync Integration', () => {
 
     const channel = await db.prepare('SELECT * FROM youtube_channels WHERE youtube_id = ?').bind('UC_TEST_1234567890abcdef').first<any>();
     expect(channel).toBeDefined();
-    expect(channel.sync_start_date).not.toBeNull();
+    expect(channel.last_sync_at).not.toBeNull();
   });
 });
