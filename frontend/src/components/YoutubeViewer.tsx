@@ -63,6 +63,31 @@ export function YoutubeViewer() {
         }
     };
 
+    const fetchVideoDetail = async (videoId: string) => {
+        setLoading(true);
+        setError(null);
+        setSingleData(null);
+        // Ensure UI state matches
+        setViewMode('id');
+        setType('video');
+        setId(videoId);
+
+        try {
+            const res = await fetch(`/api/youtube/video/${videoId}`);
+            const json = await res.json();
+
+            if (!res.ok) {
+                throw new Error(json.message || json.error || 'Failed to fetch');
+            }
+
+            setSingleData(json);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleIdSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!id) return;
@@ -112,16 +137,18 @@ export function YoutubeViewer() {
         }
     }, [viewMode]);
 
-    const handleVideoSearch = async (overrideOffset?: number) => {
+    const handleVideoSearch = async (opts?: { offset?: number, channelId?: string, query?: string }) => {
         setLoading(true);
         setError(null);
 
-        const currentOffset = overrideOffset !== undefined ? overrideOffset : pagination.offset;
+        const currentOffset = opts?.offset !== undefined ? opts.offset : pagination.offset;
+        const currentChannel = opts?.channelId !== undefined ? opts.channelId : selectedChannel;
+        const currentQuery = opts?.query !== undefined ? opts.query : searchQuery;
 
         try {
             const params = new URLSearchParams();
-            if (searchQuery) params.append('title_contains', searchQuery);
-            if (selectedChannel) params.append('channel_id', selectedChannel);
+            if (currentQuery) params.append('title_contains', currentQuery);
+            if (currentChannel) params.append('channel_id', currentChannel);
             params.append('sort_by', sortConfig.by);
             params.append('sort_order', sortConfig.order);
             params.append('limit', pagination.limit.toString());
@@ -245,7 +272,20 @@ export function YoutubeViewer() {
                             <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--color-text-dim)' }}>
                                 <div><strong>Sync Status:</strong></div>
                                 <div>Earliest: { (singleData as YoutubeChannel).sync_start_date ? new Date((singleData as YoutubeChannel).sync_start_date!).toLocaleDateString() : 'Never' }</div>
-                                <button onClick={handleSync} disabled={syncing} style={{ marginTop: '0.5rem', fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}>{syncing ? 'Syncing...' : 'Sync Videos'}</button>
+                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                    <button onClick={handleSync} disabled={syncing} style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}>{syncing ? 'Syncing...' : 'Sync Videos'}</button>
+                                    <button
+                                        onClick={() => {
+                                            setViewMode('search');
+                                            setSelectedChannel(singleData.youtube_id);
+                                            setSearchQuery('');
+                                            handleVideoSearch({ channelId: singleData.youtube_id, query: '', offset: 0 });
+                                        }}
+                                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                                    >
+                                        See Channel Videos
+                                    </button>
+                                </div>
                             </div>
                         )}
                         <p style={{ whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{singleData.description}</p>
@@ -304,10 +344,20 @@ export function YoutubeViewer() {
                             return (
                                 <tr key={video.youtube_id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                                     <td style={{ padding: '0.75rem' }}>
-                                        <img src={video.thumbnail_url} alt="" style={{ height: '60px', borderRadius: '4px' }} />
+                                        <img
+                                            src={video.thumbnail_url}
+                                            alt=""
+                                            style={{ height: '60px', borderRadius: '4px', cursor: 'pointer' }}
+                                            onClick={() => fetchVideoDetail(video.youtube_id)}
+                                        />
                                     </td>
                                     <td style={{ padding: '0.75rem', maxWidth: '300px' }}>
-                                        <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{video.title}</div>
+                                        <div
+                                            style={{ fontWeight: 'bold', marginBottom: '0.25rem', cursor: 'pointer', color: 'var(--color-primary)' }}
+                                            onClick={() => fetchVideoDetail(video.youtube_id)}
+                                        >
+                                            {video.title}
+                                        </div>
                                         <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)' }}>{video.duration}</div>
                                     </td>
                                     <td style={{ padding: '0.75rem' }}>{new Date(video.published_at).toLocaleDateString()}</td>
@@ -341,7 +391,7 @@ export function YoutubeViewer() {
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2rem' }}>
                     <button
                         disabled={pagination.offset === 0 || loading}
-                        onClick={() => handleVideoSearch(Math.max(0, pagination.offset - pagination.limit))}
+                        onClick={() => handleVideoSearch({ offset: Math.max(0, pagination.offset - pagination.limit) })}
                     >
                         Previous
                     </button>
@@ -350,7 +400,7 @@ export function YoutubeViewer() {
                     </span>
                     <button
                         disabled={searchResults.videos.length < pagination.limit || loading}
-                        onClick={() => handleVideoSearch(pagination.offset + pagination.limit)}
+                        onClick={() => handleVideoSearch({ offset: pagination.offset + pagination.limit })}
                     >
                         Next
                     </button>
@@ -394,7 +444,7 @@ export function YoutubeViewer() {
                 </>
             ) : (
                 <>
-                    <form onSubmit={(e) => { e.preventDefault(); handleVideoSearch(0); }} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                    <form onSubmit={(e) => { e.preventDefault(); handleVideoSearch({ offset: 0 }); }} style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                         <input
                             type="text"
                             placeholder="Search videos by title..."

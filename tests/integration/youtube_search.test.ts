@@ -128,4 +128,20 @@ describe('YouTube Search Integration', () => {
     const body: any = await res.json();
     expect(body.videos.length).toBe(1);
   });
+
+  it('filters by channel_id', async () => {
+    // Both seeded videos are in 'UC_TEST'
+    const res = await mf.dispatchFetch('http://localhost/api/youtube/videos?channel_id=UC_TEST', {
+      headers: { Cookie: sessionCookie },
+    });
+    const body: any = await res.json();
+    expect(body.videos.length).toBe(3);
+
+    // Test non-existent channel
+    const res2 = await mf.dispatchFetch('http://localhost/api/youtube/videos?channel_id=UC_NONEXISTENT', {
+        headers: { Cookie: sessionCookie },
+      });
+    const body2: any = await res2.json();
+    expect(body2.videos.length).toBe(0);
+  });
 });
