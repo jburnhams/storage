@@ -29,8 +29,36 @@ describe('YoutubeService Sync Logic', () => {
   }
 
   // Helper to mock YouTube API responses
-  function mockYoutubeApi(searchResults: any[], videoResults: any[]) {
+  function mockYoutubeApi(searchResults: any[], videoResults: any[], channelVideoCount: string = '1000') {
     globalFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/channels')) {
+          // Extract ID from URL if possible, otherwise use a default or assume the test caller handles the ID match
+          // URL format: .../channels?id=...&...
+          const urlObj = new URL(url);
+          const requestedId = urlObj.searchParams.get('id') || 'UC_TEST';
+
+          return {
+              ok: true,
+              json: async () => ({
+                  items: [{
+                      id: requestedId,
+                      snippet: {
+                          title: 'Test Channel',
+                          description: 'Desc',
+                          customUrl: '@test',
+                          publishedAt: '2020-01-01T00:00:00Z',
+                          thumbnails: { default: { url: 'thumb' } }
+                      },
+                      statistics: {
+                          viewCount: '1000',
+                          subscriberCount: '100',
+                          hiddenSubscriberCount: false,
+                          videoCount: channelVideoCount
+                      }
+                  }]
+              })
+          };
+      }
       if (url.includes('/search')) {
         return {
           ok: true,
@@ -55,7 +83,7 @@ describe('YoutubeService Sync Logic', () => {
   }
 
   it('performs first sync (backward from now)', async () => {
-    const channelId = 'UC_FirstSync';
+    const channelId = 'UC0123456789012345678901';
     // Channel created 1 year ago
     const publishedAt = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
     await seedChannel(channelId, publishedAt);
@@ -94,7 +122,7 @@ describe('YoutubeService Sync Logic', () => {
   });
 
   it('continues backward sync', async () => {
-    const channelId = 'UC_Backward';
+    const channelId = 'UC0123456789012345678902';
     const publishedAt = new Date('2020-01-01').toISOString();
     // Previously synced last month
     const syncStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -115,7 +143,7 @@ describe('YoutubeService Sync Logic', () => {
   });
 
   it('detects completion when reaching published_at', async () => {
-    const channelId = 'UC_Complete';
+    const channelId = 'UC0123456789012345678903';
     const publishedAt = new Date('2020-01-01').toISOString();
     // Synced up to just after creation
     const syncStart = new Date('2020-01-01').toISOString();
@@ -129,7 +157,7 @@ describe('YoutubeService Sync Logic', () => {
   });
 
   it('catches up forward if neglected', async () => {
-    const channelId = 'UC_CatchUp';
+    const channelId = 'UC0123456789012345678904';
     const publishedAt = new Date('2020-01-01').toISOString();
     // Last synced a year ago
     const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
@@ -150,5 +178,27 @@ describe('YoutubeService Sync Logic', () => {
 
     // Start shouldn't move backwards yet because we prioritized forward
     expect(channel.sync_start_date).toBe(oneYearAgo);
+  });
+
+  it('stops sync if database has enough videos', async () => {
+    const channelId = 'UC0123456789012345678905';
+    const publishedAt = new Date('2020-01-01').toISOString();
+    await seedChannel(channelId, publishedAt);
+
+    // Mock DB having 5 videos
+    for (let i = 0; i < 5; i++) {
+        await env.DB.prepare(
+            `INSERT INTO youtube_videos (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
+             VALUES (?, 'V', 'D', ?, ?, 't', 'PT1M', '{}', '{}', ?, ?)`
+        ).bind(`v${i}`, new Date().toISOString(), channelId, new Date().toISOString(), new Date().toISOString()).run();
+    }
+
+    // Mock API saying channel has 5 videos total
+    mockYoutubeApi([], [], '5');
+
+    const result = await service.syncChannelVideos(channelId);
+
+    expect(result.is_complete).toBe(true);
+    expect(result.count).toBe(0); // Should not have fetched any new videos
   });
 });

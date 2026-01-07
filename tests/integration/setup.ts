@@ -78,25 +78,55 @@ export async function bundleWorker(): Promise<string> {
   return readFileSync(join(outdir, "worker.js"), "utf-8");
 }
 
+let sharedMf: Miniflare | undefined;
+let sharedPersistPath: string | undefined;
+
 /**
  * Creates a Miniflare instance configured for testing
- * with D1 database and secrets
+ * with D1 database and secrets.
+ * Reuses a single instance if called multiple times (singleton), unless isolated is requested.
  */
 export async function createMiniflareInstance(options: {
   secrets?: Record<string, string>;
   persistPath?: string;
   script?: string;
+  isolate?: boolean;
 }): Promise<{ mf: Miniflare; persistPath: string }> {
+  // If we already have a shared instance and isolation is not requested, return it.
+  if (!options.isolate && sharedMf && sharedPersistPath) {
+    if (options.script) {
+        // Update the script if provided.
+        // Note: This updates the shared instance, so subsequent tests will also see this script
+        // until updated again. This is acceptable for most integration tests that use the same worker script.
+        await sharedMf.setOptions({
+            script: options.script,
+            bindings: {
+              ...await sharedMf.getBindings(),
+              ...options.secrets
+            } as any
+        });
+    } else if (options.secrets) {
+        // Update secrets if provided
+        await sharedMf.setOptions({
+            bindings: {
+                ...await sharedMf.getBindings(),
+                ...options.secrets
+            } as any
+        });
+    }
+
+    return {
+        mf: sharedMf,
+        persistPath: sharedPersistPath
+    };
+  }
+
   const { secrets = {}, persistPath: providedPersistPath, script = "" } = options;
 
   // Use provided path or create a temporary one
   const persistPath = providedPersistPath || mkdtempSync(join(tmpdir(), "miniflare-test-"));
 
   // Apply migrations to the persistence path
-  // Only apply if we created the path (fresh) OR if explicitly asked?
-  // Actually, wrangler is idempotent so we can always apply, but it might be slow.
-  // Ideally we only apply on creation.
-  // But for simplicity, let's keep it here.
   applyWranglerMigrations(persistPath);
 
   // Wrangler creates a nested directory structure: <persistPath>/v3/d1
@@ -118,6 +148,20 @@ export async function createMiniflareInstance(options: {
       ...(secrets.YOUTUBE_API_BASE_URL ? { YOUTUBE_API_BASE_URL: secrets.YOUTUBE_API_BASE_URL } : {}),
     },
   });
+
+  if (!options.isolate) {
+    // Monkey-patch dispose to prevent accidental disposal by tests
+    const originalDispose = mf.dispose.bind(mf);
+    mf.dispose = async () => {
+        // No-op for shared instance
+        return;
+    };
+    // If we ever really need to dispose it (e.g. teardown), we can use originalDispose.
+    // But since it's singleton for the process, process exit cleans it up.
+
+    sharedMf = mf;
+    sharedPersistPath = persistPath;
+  }
 
   return { mf, persistPath };
 }
@@ -185,11 +229,20 @@ export async function seedTestData(db: D1Database) {
  * Cleans up all data from the database
  */
 export async function cleanDatabase(db: D1Database): Promise<void> {
-  // Enable foreign keys to ensure cascade deletes work
-  await db.prepare("PRAGMA foreign_keys = ON").run();
+  // Turn off foreign keys to allow deleting in any order
+  await db.prepare("PRAGMA foreign_keys = OFF").run();
 
-  // We need to order deletions to avoid constraint violations if CASCADE isn't working for some reason,
-  // though it should be.
-  await db.prepare("DELETE FROM sessions").run();
-  await db.prepare("DELETE FROM users").run();
+  // Dynamically get all tables
+  const tablesResult = await db.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`
+  ).all();
+
+  const tables = tablesResult.results.map((r: any) => r.name);
+
+  for (const table of tables) {
+      await db.prepare(`DELETE FROM ${table}`).run();
+  }
+
+  // Re-enable foreign keys
+  await db.prepare("PRAGMA foreign_keys = ON").run();
 }

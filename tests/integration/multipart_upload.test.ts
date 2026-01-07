@@ -31,19 +31,14 @@ describe("Multipart Upload Integration Tests", () => {
   });
 
   beforeEach(async () => {
+    // Consolidated cleanup and seeding
     db = await mf.getD1Database("DB");
     await cleanDatabase(db);
     await seedTestData(db);
   });
 
   afterAll(async () => {
-    if (mf) await mf.dispose();
-    try {
-      const { rmSync } = await import("fs");
-      if (persistPath) rmSync(persistPath, { recursive: true, force: true });
-    } catch (e) {
-      console.error("Failed to clean up D1 persistence:", e);
-    }
+    // Singleton handles cleanup
   });
 
   // Skipped due to instability in Miniflare/Undici handling of multipart requests in the test environment.

@@ -18,16 +18,16 @@ describe("Bulk Operations Integration", () => {
         persistPath = instance.persistPath;
 
         db = await mf.getD1Database("DB");
+    });
+
+    beforeEach(async () => {
+        const { cleanDatabase } = await import('./setup');
+        await cleanDatabase(db);
         await seedTestData(db);
     });
 
     afterAll(async () => {
-        if (mf) await mf.dispose();
-        if (persistPath) {
-            try {
-                rmSync(persistPath, { recursive: true, force: true });
-            } catch (e) { console.error(e); }
-        }
+        // Singleton handles cleanup
     });
 
     it("should delete multiple entries", async () => {

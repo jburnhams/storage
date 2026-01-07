@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createMiniflareInstance, createTestSession, seedTestData, applyWranglerMigrations, bundleWorker } from './setup';
+import { createMiniflareInstance, seedTestData, bundleWorker } from './setup';
 import { Miniflare } from 'miniflare';
-import { Response } from 'undici';
 
 describe('YouTube Search Integration', () => {
   let mf: Miniflare;
@@ -15,13 +14,15 @@ describe('YouTube Search Integration', () => {
     // 1. Create instance (db starts empty)
     const instance = await createMiniflareInstance({ script });
     mf = instance.mf;
-    persistencePath = instance.persistencePath;
+    persistencePath = instance.persistPath;
 
     // 2. Apply migrations (createMiniflareInstance does this, but good to be explicit or rely on it)
     // Actually createMiniflareInstance already called applyWranglerMigrations(persistPath) inside it.
 
     // 3. Seed data
     const db = await mf.getD1Database('DB');
+    const { cleanDatabase } = await import('./setup');
+    await cleanDatabase(db);
     await seedTestData(db);
 
     // 4. Seed extra YouTube data for searching
@@ -38,24 +39,11 @@ describe('YouTube Search Integration', () => {
       ('VID_3', 'Angular Tutorial', 'Learn Angular', '2023-03-01', 'UC_TEST', 'http://thumb', 'PT30M', '{"viewCount": "300", "likeCount": "30"}', '{}', '2023-03-01', '2023-03-01')
     `).run();
 
-    // 5. Get auth cookie (using one of the users seeded by seedTestData)
-    // seedTestData creates 'test-user' with session 'test-session-user'
-    // createTestSession helper might create a NEW session or return a cookie for an existing user.
-    // Let's use the helper to get a valid cookie header.
-    // However, createTestSession in setup.ts doesn't exist in the file content I read earlier?
-    // Wait, I saw `createTestSession` in the imports of my previous test file, but when I read `tests/integration/setup.ts` in the memory/previous turn, I didn't see `createTestSession` exported.
-    // I saw `seedTestData`.
-    // Let me check `tests/integration/setup.ts` again or just manually construct the cookie since I know the session ID.
-
     sessionCookie = 'storage_session=test-session-user';
   });
 
   afterAll(async () => {
-    await mf.dispose();
-    const fs = await import('fs');
-    if (persistencePath) {
-        fs.rmSync(persistencePath, { recursive: true, force: true });
-    }
+    // Singleton handles cleanup
   });
 
   it('requires authentication', async () => {

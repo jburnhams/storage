@@ -69,6 +69,7 @@ export interface YoutubeVideo {
   description: string;
   published_at: string;
   channel_id: string;
+  channel_title?: string;
   thumbnail_url: string;
   duration: string;
   statistics: string; // JSON string

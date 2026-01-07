@@ -36,20 +36,15 @@ describe("Worker HTTP Integration Tests", () => {
   });
 
   beforeEach(async () => {
-    // We don't need to re-get DB if mf hasn't changed, but it doesn't hurt
+    // Consolidated cleanup and seeding
     db = await mf.getD1Database("DB");
+    const { cleanDatabase } = await import('./setup');
     await cleanDatabase(db);
     await seedTestData(db);
   });
 
   afterAll(async () => {
-    if (mf) await mf.dispose();
-    try {
-      const { rmSync } = await import("fs");
-      if (persistPath) rmSync(persistPath, { recursive: true, force: true });
-    } catch (e) {
-      console.error("Failed to clean up D1 persistence:", e);
-    }
+    // Singleton handles cleanup
   });
 
   describe("Health Check Endpoint", () => {

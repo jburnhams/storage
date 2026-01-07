@@ -17,14 +17,16 @@ describe("OpenAPI Integration Tests", () => {
     persistPath = result.persistPath;
   });
 
+  beforeEach(async () => {
+    // OpenAPI tests might assume clean DB, but usually they just check schema/endpoint.
+    // However, if any test creates data, we should clean.
+    const db = await mf.getD1Database("DB");
+    const { cleanDatabase } = await import('./setup');
+    await cleanDatabase(db);
+  });
+
   afterAll(async () => {
-    if (mf) await mf.dispose();
-    try {
-      const { rmSync } = await import("fs");
-      if (persistPath) rmSync(persistPath, { recursive: true, force: true });
-    } catch (e) {
-      console.error("Failed to clean up D1 persistence:", e);
-    }
+    // Singleton handles cleanup
   });
 
   it("should serve openapi.json with status 200 and valid content", async () => {

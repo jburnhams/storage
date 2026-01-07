@@ -18,6 +18,8 @@ describe('Session Authentication via Query Parameter', () => {
     const db = await mf.getD1Database('DB');
 
     // Seed test data using the shared helper
+    const { cleanDatabase } = await import('./setup');
+    await cleanDatabase(db);
     await seedTestData(db);
 
     // We can use the hardcoded session from seedTestData
@@ -25,7 +27,7 @@ describe('Session Authentication via Query Parameter', () => {
   });
 
   afterAll(async () => {
-    await mf.dispose();
+    // Singleton handles cleanup
   });
 
   it('should allow access with valid session in query param (no cookie)', async () => {
