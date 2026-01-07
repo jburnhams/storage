@@ -79,7 +79,8 @@ describe('YouTube Sync Integration', () => {
       secrets: {
         YOUTUBE_API_KEY: 'test-key',
         YOUTUBE_API_BASE_URL: mockApiUrl,
-      }
+      },
+      isolate: true // Use isolated instance to prevent poisoning shared instance with custom secrets
     });
     mf = result.mf;
     persistPath = result.persistPath;

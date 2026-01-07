@@ -75,12 +75,14 @@ export async function bundleWorker(): Promise<string> {
     }
   });
 
-  return readFileSync(join(outdir, "worker.js"), "utf-8");
+  const content = readFileSync(join(outdir, "worker.js"), "utf-8");
+  return content;
 }
 
 const SHARED_MF_KEY = Symbol.for("TEST_SHARED_MF");
 const SHARED_PATH_KEY = Symbol.for("TEST_SHARED_PATH");
 const SHARED_SCRIPT_HASH_KEY = Symbol.for("TEST_SHARED_SCRIPT_HASH");
+const SHARED_SECRETS_HASH_KEY = Symbol.for("TEST_SHARED_SECRETS_HASH");
 
 /**
  * Creates a Miniflare instance configured for testing
@@ -97,14 +99,18 @@ export async function createMiniflareInstance(options: {
   const sharedMf = globalStore[SHARED_MF_KEY] as Miniflare | undefined;
   const sharedPersistPath = globalStore[SHARED_PATH_KEY] as string | undefined;
   const lastScriptHash = globalStore[SHARED_SCRIPT_HASH_KEY] as string | undefined;
+  const lastSecretsHash = globalStore[SHARED_SECRETS_HASH_KEY] as string | undefined;
 
   // Simple hash to check if script content changed (length check for speed, or strict comparison)
   const currentScriptHash = options.script ? String(options.script.length) : undefined;
+  const currentSecretsHash = options.secrets ? JSON.stringify(options.secrets) : undefined;
 
   // If we already have a shared instance and isolation is not requested, return it.
   if (!options.isolate && sharedMf && sharedPersistPath) {
 
-    const needsUpdate = (options.script && currentScriptHash !== lastScriptHash) || options.secrets;
+    const scriptChanged = options.script && currentScriptHash !== lastScriptHash;
+    const secretsChanged = options.secrets && currentSecretsHash !== lastSecretsHash;
+    const needsUpdate = scriptChanged || secretsChanged;
 
     if (needsUpdate) {
         if (options.script) {
@@ -117,6 +123,7 @@ export async function createMiniflareInstance(options: {
                 } as any
             });
             globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
+            if (options.secrets) globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
         } else if (options.secrets) {
             // Update secrets if provided
             await sharedMf.setOptions({
@@ -125,6 +132,7 @@ export async function createMiniflareInstance(options: {
                     ...options.secrets
                 } as any
             });
+            globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
         }
     }
 
@@ -176,6 +184,9 @@ export async function createMiniflareInstance(options: {
     globalStore[SHARED_PATH_KEY] = persistPath;
     if (options.script) {
         globalStore[SHARED_SCRIPT_HASH_KEY] = currentScriptHash;
+    }
+    if (options.secrets) {
+        globalStore[SHARED_SECRETS_HASH_KEY] = currentSecretsHash;
     }
   }
 

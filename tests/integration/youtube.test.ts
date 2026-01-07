@@ -84,6 +84,7 @@ describe('YouTube Integration', () => {
         YOUTUBE_API_BASE_URL: mockServerUrl,
       },
       script: workerScript,
+      isolate: true, // Use isolated instance to prevent poisoning shared instance with custom secrets
     });
     mf = result.mf;
     persistPath = result.persistPath;
