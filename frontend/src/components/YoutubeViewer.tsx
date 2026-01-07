@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { YoutubeChannel, YoutubeVideo } from '../types';
+import type { YoutubeChannel, YoutubeVideo, YoutubeSyncResponse } from '../types';
 
 export function YoutubeViewer() {
     const [id, setId] = useState('');
@@ -7,6 +7,11 @@ export function YoutubeViewer() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<YoutubeChannel | YoutubeVideo | null>(null);
+
+    // Sync state
+    const [syncing, setSyncing] = useState(false);
+    const [syncProgress, setSyncProgress] = useState<YoutubeSyncResponse | null>(null);
+    const [totalFetched, setTotalFetched] = useState(0);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,6 +37,54 @@ export function YoutubeViewer() {
         }
     };
 
+    const handleSync = async () => {
+        if (!data || !('custom_url' in data)) return;
+        setSyncing(true);
+        setTotalFetched(0);
+        setSyncProgress(null);
+        setError(null);
+
+        let isComplete = false;
+
+        try {
+            // Safety break to prevent infinite loops in bad conditions
+            let safetyLimit = 100;
+
+            while (!isComplete && safetyLimit > 0) {
+                safetyLimit--;
+                const res = await fetch(`/api/youtube/channel/${data.youtube_id}/sync`, {
+                    method: 'POST'
+                });
+                const json = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(json.message || json.error || 'Sync failed');
+                }
+
+                const progress = json as YoutubeSyncResponse;
+                setSyncProgress(progress);
+                setTotalFetched(prev => prev + progress.count);
+                isComplete = progress.is_complete;
+
+                if (isComplete) break;
+            }
+        } catch (err: any) {
+            setError(`Sync error: ${err.message}`);
+        } finally {
+            setSyncing(false);
+            // Refresh channel data to show new sync dates.
+            // We reuse the current search logic but need to be careful not to reset unrelated state
+            // or trigger form submit event.
+            // A simple re-fetch:
+             try {
+                const res = await fetch(`/api/youtube/channel/${data.youtube_id}`);
+                if (res.ok) {
+                    setData(await res.json());
+                }
+            } catch (e) { console.error(e); }
+        }
+    };
+
     const formatJSON = (jsonString: string) => {
         try {
             const obj = JSON.parse(jsonString);
@@ -39,6 +92,52 @@ export function YoutubeViewer() {
         } catch (e) {
             return jsonString;
         }
+    };
+
+    const renderSyncProgress = () => {
+        if (!syncProgress && !syncing) return null;
+
+        return (
+            <div style={{ background: 'var(--color-bg)', padding: '1rem', borderRadius: '4px', marginTop: '1rem', border: '1px solid var(--color-border)' }}>
+                <h3>Sync Progress</h3>
+                {syncing && <div style={{ color: 'var(--color-primary)' }}>Syncing...</div>}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginTop: '0.5rem' }}>
+                    <div>
+                        <strong>Total Fetched This Run:</strong> {totalFetched}
+                    </div>
+                    <div>
+                         <strong>Current Range:</strong><br/>
+                         {syncProgress ? (
+                             <>
+                                {new Date(syncProgress.range_start).toLocaleDateString()} - {new Date(syncProgress.range_end).toLocaleDateString()}
+                             </>
+                         ) : 'Starting...'}
+                    </div>
+                </div>
+
+                {syncProgress?.sample_video && (
+                     <div style={{ marginTop: '1rem' }}>
+                        <strong>Latest Sample:</strong>
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', alignItems: 'center' }}>
+                            <img
+                                src={syncProgress.sample_video.thumbnail_url}
+                                style={{ height: '40px', borderRadius: '4px' }}
+                            />
+                            <div style={{ fontSize: '0.9rem' }}>
+                                {syncProgress.sample_video.title} ({new Date(syncProgress.sample_video.published_at).toLocaleDateString()})
+                            </div>
+                        </div>
+                     </div>
+                )}
+
+                {syncProgress?.is_complete && (
+                    <div style={{ marginTop: '1rem', color: 'green', fontWeight: 'bold' }}>
+                        Sync Complete! All videos up to channel creation fetched.
+                    </div>
+                )}
+            </div>
+        );
     };
 
     const renderData = () => {
@@ -72,9 +171,27 @@ export function YoutubeViewer() {
                             ))}
                         </div>
 
+                         {/* Sync Stats for Channel */}
+                        {isChannel && (
+                            <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--color-text-dim)' }}>
+                                <div><strong>Sync Status:</strong></div>
+                                <div>Earliest: { (data as YoutubeChannel).sync_start_date ? new Date((data as YoutubeChannel).sync_start_date!).toLocaleDateString() : 'Never' }</div>
+                                <div>Latest: { (data as YoutubeChannel).sync_end_date ? new Date((data as YoutubeChannel).sync_end_date!).toLocaleDateString() : 'Never' }</div>
+                                <button
+                                    onClick={handleSync}
+                                    disabled={syncing}
+                                    style={{ marginTop: '0.5rem', fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                                >
+                                    {syncing ? 'Syncing...' : 'Sync Videos'}
+                                </button>
+                            </div>
+                        )}
+
                         <p style={{ whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{data.description}</p>
                     </div>
                 </div>
+
+                {renderSyncProgress()}
 
                 <details style={{ marginTop: '2rem', background: 'var(--color-bg)', padding: '1rem', borderRadius: '4px' }}>
                     <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Raw JSON</summary>
