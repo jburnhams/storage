@@ -159,6 +159,125 @@ export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
+  YOUTUBE_API_KEY: string;
+  YOUTUBE_API_BASE_URL?: string; // Optional for testing
+}
+
+// ===== YouTube Models =====
+
+export interface YoutubeChannel {
+  youtube_id: string;
+  title: string;
+  description: string;
+  custom_url: string | null;
+  thumbnail_url: string;
+  published_at: string;
+  statistics: string; // JSON
+  raw_json: string; // JSON
+  created_at: string;
+  updated_at: string;
+}
+
+export interface YoutubeVideo {
+  youtube_id: string;
+  title: string;
+  description: string;
+  published_at: string;
+  channel_id: string;
+  thumbnail_url: string;
+  duration: string;
+  statistics: string; // JSON
+  raw_json: string; // JSON
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== YouTube API Response Types (Partial) =====
+
+export interface YoutubeThumbnail {
+  url: string;
+  width: number;
+  height: number;
+}
+
+export interface YoutubeThumbnails {
+  default?: YoutubeThumbnail;
+  medium?: YoutubeThumbnail;
+  high?: YoutubeThumbnail;
+  standard?: YoutubeThumbnail;
+  maxres?: YoutubeThumbnail;
+}
+
+export interface YoutubeChannelSnippet {
+  title: string;
+  description: string;
+  customUrl?: string;
+  publishedAt: string;
+  thumbnails: YoutubeThumbnails;
+  country?: string;
+}
+
+export interface YoutubeChannelStatistics {
+  viewCount: string;
+  subscriberCount: string; // hiddenSubscriberCount
+  hiddenSubscriberCount: boolean;
+  videoCount: string;
+}
+
+export interface YoutubeChannelResource {
+  kind: "youtube#channel";
+  etag: string;
+  id: string;
+  snippet: YoutubeChannelSnippet;
+  statistics: YoutubeChannelStatistics;
+}
+
+export interface YoutubeVideoSnippet {
+  publishedAt: string;
+  channelId: string;
+  title: string;
+  description: string;
+  thumbnails: YoutubeThumbnails;
+  channelTitle: string;
+  tags?: string[];
+  categoryId: string;
+  liveBroadcastContent: string;
+}
+
+export interface YoutubeVideoContentDetails {
+  duration: string;
+  dimension: string;
+  definition: string;
+  caption: string;
+  licensedContent: boolean;
+  contentRating: any;
+  projection: string;
+}
+
+export interface YoutubeVideoStatistics {
+  viewCount: string;
+  likeCount: string;
+  favoriteCount: string;
+  commentCount: string;
+}
+
+export interface YoutubeVideoResource {
+  kind: "youtube#video";
+  etag: string;
+  id: string;
+  snippet: YoutubeVideoSnippet;
+  contentDetails: YoutubeVideoContentDetails;
+  statistics: YoutubeVideoStatistics;
+}
+
+export interface YoutubeListResponse<T> {
+  kind: string;
+  etag: string;
+  pageInfo: {
+    totalResults: number;
+    resultsPerPage: number;
+  };
+  items: T[];
 }
 
 // ===== Admin Operations =====
