@@ -1,6 +1,6 @@
 import { Miniflare } from "miniflare";
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync } from "fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { build } from "esbuild";
@@ -57,6 +57,20 @@ export async function bundleWorker(): Promise<string> {
 
   if (!existsSync(outdir)) {
     mkdirSync(outdir, { recursive: true });
+  }
+
+  // Ensure src/frontend/assets.ts exists to prevent build errors
+  const assetsPath = join(process.cwd(), "src", "frontend", "assets.ts");
+  if (!existsSync(assetsPath)) {
+    console.warn("[setup] src/frontend/assets.ts missing. Creating dummy file for testing.");
+    // Create directory if it doesn't exist (though src/frontend likely exists)
+    const assetsDir = join(process.cwd(), "src", "frontend");
+    if (!existsSync(assetsDir)) mkdirSync(assetsDir, { recursive: true });
+
+    writeFileSync(assetsPath, `
+export const FRONTEND_HTML = "<html><body>Dummy Frontend for Testing</body></html>";
+export const FRONTEND_ASSETS = {};
+    `.trim());
   }
 
   await build({
