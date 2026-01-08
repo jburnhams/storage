@@ -101,6 +101,101 @@ describe('YoutubeViewer', () => {
         expect(url.searchParams.get('offset')).toBe('0');
     });
 
+    it('navigates to video detail when clicking search result', async () => {
+        // Mock responses
+        globalFetch.mockImplementation((url) => {
+             if (url.toString().includes('/channels')) {
+                 return Promise.resolve({ ok: true, json: async () => mockChannels });
+             }
+             if (url.toString().includes('/videos')) {
+                 return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ videos: [mockVideo], limit: 10, offset: 0 })
+                });
+             }
+             if (url.toString().includes('/api/youtube/video/vid1')) {
+                 return Promise.resolve({
+                     ok: true,
+                     json: async () => mockVideo
+                 });
+             }
+             return Promise.reject(new Error('Unknown URL: ' + url));
+        });
+
+        render(<YoutubeViewer />);
+        fireEvent.click(screen.getByText('Search Database'));
+        await waitFor(() => expect(globalFetch).toHaveBeenCalledWith('/api/youtube/channels'));
+
+        // Search
+        fireEvent.click(screen.getByText('Search'));
+        await waitFor(() => screen.getByText('Test Video'));
+
+        // Click title
+        fireEvent.click(screen.getByText('Test Video'));
+
+        // Expect fetch for video details
+        await waitFor(() => expect(globalFetch).toHaveBeenCalledWith('/api/youtube/video/vid1'));
+
+        // Should be in ID mode now (Video ID input visible)
+        expect(screen.getByPlaceholderText(/Video ID/)).toBeDefined();
+    });
+
+    it('navigates to channel videos from channel detail', async () => {
+         const mockChannel = {
+             youtube_id: 'chan1',
+             title: 'My Channel',
+             description: 'Desc',
+             custom_url: '@mychan',
+             thumbnail_url: 'thumb',
+             published_at: '2020-01-01',
+             statistics: JSON.stringify({ videoCount: 10 }),
+             raw_json: '{}'
+         };
+
+         // Mock responses
+        globalFetch.mockImplementation((url) => {
+            if (url.toString().includes('/api/youtube/channel/chan1')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => mockChannel
+                });
+            }
+            if (url.toString().includes('/videos')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({ videos: [mockVideo], limit: 10, offset: 0 })
+                });
+            }
+             if (url.toString().includes('/channels')) {
+                 return Promise.resolve({ ok: true, json: async () => mockChannels });
+             }
+            return Promise.reject(new Error('Unknown URL: ' + url));
+        });
+
+        render(<YoutubeViewer />);
+
+        // Manually trigger channel fetch
+        const idInput = screen.getByPlaceholderText('Video ID'); // Defaults to video mode
+        const select = screen.getByDisplayValue('Video');
+        fireEvent.change(select, { target: { value: 'channel' } });
+        fireEvent.change(screen.getByPlaceholderText('Channel ID'), { target: { value: 'chan1' } });
+        fireEvent.click(screen.getByText('Fetch'));
+
+        await waitFor(() => screen.getByText('My Channel'));
+
+        // Click "See Channel Videos"
+        const seeVideosBtn = screen.getByText('See Channel Videos');
+        fireEvent.click(seeVideosBtn);
+
+        // Verify it switches to search and fetches videos with channel_id
+        await waitFor(() => expect(globalFetch).toHaveBeenCalledWith(expect.stringContaining('/api/youtube/videos')));
+
+        const calls = globalFetch.mock.calls.filter(c => c[0].toString().includes('/videos'));
+        const lastCall = calls[calls.length - 1];
+        const url = new URL(lastCall[0], 'http://localhost');
+        expect(url.searchParams.get('channel_id')).toBe('chan1');
+    });
+
     it('handles sorting', async () => {
         globalFetch
             .mockImplementation((url) => {
