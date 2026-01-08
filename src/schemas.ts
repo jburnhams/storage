@@ -225,3 +225,31 @@ export type BulkExportRequest = z.infer<typeof BulkExportRequestSchema>;
 export type BulkDeleteRequest = z.infer<typeof BulkDeleteRequestSchema>;
 export type AuthCallbackQuery = z.infer<typeof AuthCallbackQuerySchema>;
 export type AuthLoginQuery = z.infer<typeof AuthLoginQuerySchema>;
+
+// ===== Random Video Schemas =====
+
+export const GetRandomVideosQuerySchema = z.object({
+  count: z.string().optional().default('20').transform((val) => parseInt(val, 10)),
+  min_duration: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
+  max_duration: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
+});
+
+export const RandomVideoSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  thumbnail: z.string(),
+  duration_seconds: z.number().nullable(),
+  channel_id: z.string(),
+  channel_title: z.string(),
+  channel_thumbnail: z.string(),
+  published_at: z.string(),
+  view_count: z.number().nullable(),
+});
+
+export const RandomVideoResponseSchema = z.object({
+  videos: z.array(RandomVideoSchema),
+});
+
+export type GetRandomVideosQuery = z.infer<typeof GetRandomVideosQuerySchema>;
+export type RandomVideoResponse = z.infer<typeof RandomVideoResponseSchema>;

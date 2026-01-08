@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { YoutubeService } from '../services/youtube';
 import { requireAuth } from '../middleware';
 import { buildSqlSearch } from '../utils/db_search';
+import { GetRandomVideosQuerySchema, RandomVideoResponseSchema, ErrorResponseSchema } from '../schemas';
 
 export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
   const channelSchema = z.object({
@@ -57,11 +58,6 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     total: z.number(),
   });
 
-  const errorSchema = z.object({
-    error: z.string(),
-    message: z.string(),
-  });
-
   const syncResponseSchema = z.object({
     count: z.number(),
     range_start: z.string().nullable(),
@@ -70,6 +66,91 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     is_complete: z.boolean(),
     total_stored_videos: z.number(),
   });
+
+  // GET /api/videos/random
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/api/videos/random',
+      tags: ['YouTube'],
+      summary: 'Get Random Videos',
+      description: 'Get a random selection of videos, optionally filtered by duration.',
+      middleware: [requireAuth] as any,
+      request: {
+        query: GetRandomVideosQuerySchema,
+      },
+      responses: {
+        200: {
+          description: 'Random videos',
+          content: {
+            'application/json': {
+              schema: RandomVideoResponseSchema,
+            },
+          },
+        },
+        500: {
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const query = c.req.valid('query');
+        const count = query.count || 20;
+        const minDuration = query.min_duration;
+        const maxDuration = query.max_duration;
+
+        const conditions: string[] = [];
+        const params: any[] = [];
+
+        if (minDuration !== undefined) {
+          conditions.push('v.duration_seconds >= ?');
+          params.push(minDuration);
+        }
+
+        if (maxDuration !== undefined) {
+          conditions.push('v.duration_seconds <= ?');
+          params.push(maxDuration);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const sql = `
+          SELECT
+            v.youtube_id as id,
+            v.title,
+            v.description,
+            v.thumbnail_url as thumbnail,
+            v.duration_seconds,
+            v.channel_id,
+            c.title as channel_title,
+            c.thumbnail_url as channel_thumbnail,
+            v.published_at,
+            v.view_count
+          FROM youtube_videos v
+          LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id
+          ${whereClause}
+          ORDER BY RANDOM()
+          LIMIT ?
+        `;
+
+        // Add limit to params
+        params.push(count);
+
+        const { results } = await c.env.DB.prepare(sql).bind(...params).all();
+
+        return c.json({ videos: results }, 200);
+      } catch (error: any) {
+        console.error('Random Videos Error:', error);
+        return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
+      }
+    }
+  );
 
   // GET /api/youtube/channels
   app.openapi(
@@ -93,7 +174,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
                 description: 'Server error',
                 content: {
                     'application/json': {
-                        schema: errorSchema,
+                        schema: ErrorResponseSchema,
                     },
                 },
             },
@@ -154,7 +235,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           description: 'Server error',
           content: {
             'application/json': {
-              schema: errorSchema,
+              schema: ErrorResponseSchema,
             },
           },
         },
@@ -242,7 +323,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           description: 'Channel not found',
           content: {
             'application/json': {
-              schema: errorSchema,
+              schema: ErrorResponseSchema,
             },
           },
         },
@@ -250,7 +331,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           description: 'Server error',
           content: {
             'application/json': {
-              schema: errorSchema,
+              schema: ErrorResponseSchema,
             },
           },
         },
@@ -300,7 +381,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           description: 'Channel not found',
           content: {
             'application/json': {
-              schema: errorSchema,
+              schema: ErrorResponseSchema,
             },
           },
         },
@@ -308,7 +389,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
             description: 'Server error',
             content: {
                 'application/json': {
-                    schema: errorSchema,
+                    schema: ErrorResponseSchema,
                 }
             }
         }
@@ -358,7 +439,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           description: 'Video not found',
           content: {
             'application/json': {
-              schema: errorSchema,
+              schema: ErrorResponseSchema,
             },
           },
         },
@@ -366,7 +447,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
             description: 'Server error',
             content: {
                 'application/json': {
-                    schema: errorSchema,
+                    schema: ErrorResponseSchema,
                 }
             }
         }
