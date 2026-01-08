@@ -37,16 +37,16 @@ describe('YouTube Search Integration', () => {
     `).run();
 
     await db.prepare(`
-      INSERT INTO youtube_videos (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
+      INSERT INTO youtube_videos (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at, view_count, like_count)
       VALUES
-      ('VID_1', 'React Tutorial', 'Learn React', '2023-01-01', 'UC_TEST', 'http://thumb', 'PT10M', '{"viewCount": "100", "likeCount": "10"}', '{}', '2023-01-01', '2023-01-01'),
-      ('VID_2', 'Vue Tutorial', 'Learn Vue', '2023-02-01', 'UC_TEST', 'http://thumb', 'PT20M', '{"viewCount": "200", "likeCount": "20"}', '{}', '2023-02-01', '2023-02-01'),
-      ('VID_3', 'Angular Tutorial', 'Learn Angular', '2023-03-01', 'UC_TEST', 'http://thumb', 'PT30M', '{"viewCount": "300", "likeCount": "30"}', '{}', '2023-03-01', '2023-03-01')
+      ('VID_1', 'React Tutorial', 'Learn React', '2023-01-01', 'UC_TEST', 'http://thumb', 'PT10M', '{"viewCount": "100", "likeCount": "10"}', '{}', '2023-01-01', '2023-01-01', 100, 10),
+      ('VID_2', 'Vue Tutorial', 'Learn Vue', '2023-02-01', 'UC_TEST', 'http://thumb', 'PT20M', '{"viewCount": "200", "likeCount": "20"}', '{}', '2023-02-01', '2023-02-01', 200, 20),
+      ('VID_3', 'Angular Tutorial', 'Learn Angular', '2023-03-01', 'UC_TEST', 'http://thumb', 'PT30M', '{"viewCount": "300", "likeCount": "30"}', '{}', '2023-03-01', '2023-03-01', 300, 30)
     `).run();
 
     // 4. Set session cookie manually
     sessionCookie = 'storage_session=test-session-user';
-  });
+  }, 30000);
 
   afterAll(async () => {
     if (mf) await mf.dispose();
@@ -101,8 +101,8 @@ describe('YouTube Search Integration', () => {
     expect(body.videos[2].title).toBe('React Tutorial');
   });
 
-  it('filters by JSON field (viewCount > 150)', async () => {
-    const res = await mf.dispatchFetch('http://localhost/api/youtube/videos?statistics.viewCount_gt=150', {
+  it('filters by view_count > 150', async () => {
+    const res = await mf.dispatchFetch('http://localhost/api/youtube/videos?view_count_gt=150', {
       headers: { Cookie: sessionCookie },
     });
     const body: any = await res.json();
@@ -112,8 +112,8 @@ describe('YouTube Search Integration', () => {
     expect(titles).toEqual(['Angular Tutorial', 'Vue Tutorial']);
   });
 
-  it('sorts by JSON field', async () => {
-    const res = await mf.dispatchFetch('http://localhost/api/youtube/videos?sort_by=statistics.viewCount&sort_order=desc', {
+  it('sorts by view_count', async () => {
+    const res = await mf.dispatchFetch('http://localhost/api/youtube/videos?sort_by=view_count&sort_order=desc', {
       headers: { Cookie: sessionCookie },
     });
     const body: any = await res.json();

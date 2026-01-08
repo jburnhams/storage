@@ -118,4 +118,38 @@ describe('YouTube Search Endpoint', () => {
     const mainQuery = calls.find(sql => sql.includes('LIMIT ? OFFSET ?'));
     expect(mainQuery).toContain('WHERE v.channel_id = ?');
   });
+
+  it('returns video statistics fields', async () => {
+    const mockVideo = {
+        youtube_id: 'vid1',
+        title: 'Video 1',
+        description: 'Desc',
+        published_at: '2023-01-01',
+        channel_id: 'UC123',
+        thumbnail_url: 'thumb',
+        duration: 'PT1M',
+        raw_json: '{}',
+        created_at: '2023-01-01',
+        updated_at: '2023-01-01',
+        view_count: 1000,
+        like_count: 50,
+        comment_count: 10,
+        channel_title: 'Channel 1'
+    };
+    mockAll.mockResolvedValue({ results: [mockVideo] });
+
+    const res = await app.request('/api/youtube/videos', {
+       method: 'GET',
+    }, mockEnv as any);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.videos[0]).toEqual(mockVideo);
+
+    // Verify SQL selects the new columns
+    const sqlArg = mockPrepare.mock.calls[0][0];
+    expect(sqlArg).toContain('v.view_count');
+    expect(sqlArg).toContain('v.like_count');
+    expect(sqlArg).toContain('v.comment_count');
+  });
 });
