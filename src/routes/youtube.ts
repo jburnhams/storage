@@ -12,7 +12,6 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     custom_url: z.string().nullable(),
     thumbnail_url: z.string(),
     published_at: z.string(),
-    statistics: z.string(), // JSON string
     raw_json: z.string(), // JSON string
     created_at: z.string(),
     updated_at: z.string(),
@@ -43,10 +42,12 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     channel_title: z.string().optional(),
     thumbnail_url: z.string(),
     duration: z.string(),
-    statistics: z.string(), // JSON string
     raw_json: z.string(), // JSON string
     created_at: z.string(),
     updated_at: z.string(),
+    view_count: z.number().nullable().optional(),
+    like_count: z.number().nullable().optional(),
+    comment_count: z.number().nullable().optional(),
   });
 
   const videoListSchema = z.object({
@@ -98,11 +99,11 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     }),
     async (c) => {
         try {
-            // Select all columns EXCEPT raw_json
+            // Select all columns EXCEPT raw_json and statistics
             const sql = `
                 SELECT
                     youtube_id, title, description, custom_url, thumbnail_url,
-                    published_at, statistics, created_at, updated_at,
+                    published_at, created_at, updated_at,
                     upload_playlist_id, last_sync_token,
                     view_count, subscriber_count, video_count, country,
                     best_thumbnail_url, best_thumbnail_width, best_thumbnail_height
@@ -163,7 +164,8 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
         const allowedColumns = [
           'youtube_id', 'title', 'description', 'published_at',
           'channel_id', 'thumbnail_url', 'duration',
-          'statistics', 'created_at', 'updated_at'
+          'created_at', 'updated_at',
+          'view_count', 'like_count', 'comment_count'
         ];
 
         // Use 'v' as alias for youtube_videos
@@ -173,7 +175,8 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
             SELECT
                 v.youtube_id, v.title, v.description, v.published_at,
                 v.channel_id, v.thumbnail_url, v.duration,
-                v.statistics, v.raw_json, v.created_at, v.updated_at,
+                v.raw_json, v.created_at, v.updated_at,
+                v.view_count, v.like_count, v.comment_count,
                 c.title as channel_title
             FROM youtube_videos v
             LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id

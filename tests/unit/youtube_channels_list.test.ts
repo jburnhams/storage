@@ -41,7 +41,6 @@ describe('YouTube Channels List Endpoint', () => {
           custom_url: null,
           thumbnail_url: 'http://thumb1',
           published_at: '2023-01-01',
-          statistics: '{}',
           created_at: '2023-01-01',
           updated_at: '2023-01-01',
           upload_playlist_id: null,
@@ -61,7 +60,6 @@ describe('YouTube Channels List Endpoint', () => {
           custom_url: null,
           thumbnail_url: 'http://thumb2',
           published_at: '2023-01-02',
-          statistics: '{}',
           created_at: '2023-01-02',
           updated_at: '2023-01-02',
           upload_playlist_id: null,
@@ -90,7 +88,7 @@ describe('YouTube Channels List Endpoint', () => {
     const expectedQuery = `
                 SELECT
                     youtube_id, title, description, custom_url, thumbnail_url,
-                    published_at, statistics, created_at, updated_at,
+                    published_at, created_at, updated_at,
                     upload_playlist_id, last_sync_token,
                     view_count, subscriber_count, video_count, country,
                     best_thumbnail_url, best_thumbnail_width, best_thumbnail_height

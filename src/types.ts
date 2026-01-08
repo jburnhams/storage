@@ -172,7 +172,6 @@ export interface YoutubeChannel {
   custom_url: string | null;
   thumbnail_url: string;
   published_at: string;
-  statistics: string; // JSON
   raw_json: string; // JSON
   created_at: string;
   updated_at: string;
@@ -199,7 +198,6 @@ export interface YoutubeVideo {
   channel_id: string;
   thumbnail_url: string;
   duration: string;
-  statistics: string; // JSON
   raw_json: string; // JSON
   created_at: string;
   updated_at: string;

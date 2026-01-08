@@ -131,18 +131,25 @@ export class YoutubeService {
     let id = idOrHandle;
 
     // 1. Check DB by ID
+    // We fetch raw first, then cast to remove 'statistics' property if present (it will be present in DB row)
     let cached = await this.env.DB.prepare(
       'SELECT * FROM youtube_channels WHERE youtube_id = ?'
-    ).bind(id).first<YoutubeChannel>();
+    ).bind(id).first<YoutubeChannel & { statistics?: string }>();
 
-    if (cached) return cached;
+    if (cached) {
+      if ('statistics' in cached) delete cached.statistics;
+      return cached;
+    }
 
     // 2. Check DB by custom_url
     cached = await this.env.DB.prepare(
       'SELECT * FROM youtube_channels WHERE custom_url = ? OR custom_url = ?'
-    ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel>();
+    ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel & { statistics?: string }>();
 
-    if (cached) return cached;
+    if (cached) {
+      if ('statistics' in cached) delete cached.statistics;
+      return cached;
+    }
 
     // 3. Resolve ID if needed
     if (!id.startsWith('UC') || id.length !== 24) {
@@ -150,8 +157,11 @@ export class YoutubeService {
         id = await this.resolveChannelId(idOrHandle);
         cached = await this.env.DB.prepare(
           'SELECT * FROM youtube_channels WHERE youtube_id = ?'
-        ).bind(id).first<YoutubeChannel>();
-        if (cached) return cached;
+        ).bind(id).first<YoutubeChannel & { statistics?: string }>();
+        if (cached) {
+           if ('statistics' in cached) delete cached.statistics;
+           return cached;
+        }
       } catch (e) {
         throw e;
       }
@@ -175,6 +185,7 @@ export class YoutubeService {
     const uploadPlaylistId = contentDetails?.relatedPlaylists?.uploads || null;
 
     const bestThumb = this.findBestThumbnail(item.snippet.thumbnails);
+    const statisticsJson = JSON.stringify(item.statistics);
 
     const channel: YoutubeChannel = {
       youtube_id: item.id,
@@ -183,7 +194,7 @@ export class YoutubeService {
       custom_url: item.snippet.customUrl || null,
       thumbnail_url: bestThumb?.url || '',
       published_at: item.snippet.publishedAt,
-      statistics: JSON.stringify(item.statistics),
+      // statistics: statisticsJson, // Removed
       raw_json: JSON.stringify(item),
       created_at: now,
       updated_at: now,
@@ -228,7 +239,7 @@ export class YoutubeService {
       channel.custom_url,
       channel.thumbnail_url,
       channel.published_at,
-      channel.statistics,
+      statisticsJson, // Using local variable
       channel.raw_json,
       channel.created_at,
       channel.updated_at,
@@ -249,9 +260,12 @@ export class YoutubeService {
     // 1. Check DB
     const cached = await this.env.DB.prepare(
       'SELECT * FROM youtube_videos WHERE youtube_id = ?'
-    ).bind(id).first<YoutubeVideo>();
+    ).bind(id).first<YoutubeVideo & { statistics?: string }>();
 
-    if (cached) return cached;
+    if (cached) {
+       if ('statistics' in cached) delete cached.statistics;
+       return cached;
+    }
 
     // 2. Fetch from API
     // Added 'status' to part
@@ -267,6 +281,7 @@ export class YoutubeService {
     const item = data.items[0];
     const now = new Date().toISOString();
     const bestThumb = this.findBestThumbnail(item.snippet.thumbnails);
+    const statisticsJson = JSON.stringify(item.statistics);
 
     const video: YoutubeVideo = {
       youtube_id: item.id,
@@ -276,7 +291,7 @@ export class YoutubeService {
       channel_id: item.snippet.channelId,
       thumbnail_url: bestThumb?.url || '',
       duration: item.contentDetails.duration,
-      statistics: JSON.stringify(item.statistics),
+      // statistics: statisticsJson, // Removed
       raw_json: JSON.stringify(item),
       created_at: now,
       updated_at: now,
@@ -312,7 +327,7 @@ export class YoutubeService {
       video.channel_id,
       video.thumbnail_url,
       video.duration,
-      video.statistics,
+      statisticsJson, // Using local variable
       video.raw_json,
       video.created_at,
       video.updated_at,
@@ -466,6 +481,7 @@ export class YoutubeService {
 
                 for (const item of videosRes.items) {
                      const bestThumb = this.findBestThumbnail(item.snippet.thumbnails);
+                     const statisticsJson = JSON.stringify(item.statistics);
                      const v: YoutubeVideo = {
                         youtube_id: item.id,
                         title: item.snippet.title,
@@ -474,7 +490,7 @@ export class YoutubeService {
                         channel_id: item.snippet.channelId,
                         thumbnail_url: bestThumb?.url || '',
                         duration: item.contentDetails.duration,
-                        statistics: JSON.stringify(item.statistics),
+                        // statistics: statisticsJson, // Removed
                         raw_json: JSON.stringify(item),
                         created_at: nowIso,
                         updated_at: nowIso,
@@ -498,7 +514,7 @@ export class YoutubeService {
 
                      batch.push(insertStmt.bind(
                         v.youtube_id, v.title, v.description, v.published_at, v.channel_id,
-                        v.thumbnail_url, v.duration, v.statistics, v.raw_json, v.created_at, v.updated_at,
+                        v.thumbnail_url, v.duration, statisticsJson, v.raw_json, v.created_at, v.updated_at,
                         v.duration_seconds, v.view_count, v.like_count, v.comment_count, v.best_thumbnail_url, v.best_thumbnail_width, v.best_thumbnail_height,
                         v.definition, v.dimension, v.licensed_content, v.caption, v.privacy_status, v.embeddable, v.made_for_kids
                      ));
