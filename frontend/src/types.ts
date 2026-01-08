@@ -77,3 +77,11 @@ export interface YoutubeVideo {
   created_at: string;
   updated_at: string;
 }
+
+export interface YoutubeSyncResponse {
+    count: number;
+    range_start: string | null;
+    range_end: string | null;
+    sample_video: YoutubeVideo | null;
+    is_complete: boolean;
+}
