@@ -40,7 +40,7 @@ export function VideoTable({
         <div style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px', border: '1px solid var(--color-border)' }}>
                 <thead>
-                    <tr style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-bg-secondary, #f0f0f0)' }}>
+                    <tr style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-surface)' }}>
                         <th style={{ padding: '0.75rem', textAlign: 'left' }}>Thumb</th>
                         {headers.map(h => (
                             <th
