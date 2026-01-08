@@ -44,6 +44,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     videos: z.array(videoSchema),
     limit: z.number(),
     offset: z.number(),
+    total: z.number(),
   });
 
   const errorSchema = z.object({
@@ -174,7 +175,20 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
             LIMIT ? OFFSET ?
         `;
 
-        const { results } = await c.env.DB.prepare(sql).bind(...whereParams, limit, offset).all();
+        const countSql = `
+            SELECT COUNT(*) as total
+            FROM youtube_videos v
+            LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id
+            ${whereSql}
+        `;
+
+        const [resultsResult, countResult] = await Promise.all([
+          c.env.DB.prepare(sql).bind(...whereParams, limit, offset).all(),
+          c.env.DB.prepare(countSql).bind(...whereParams).first()
+        ]);
+
+        const results = resultsResult.results;
+        const total = countResult ? (countResult.total as number) : 0;
 
         // Parse JSON fields if necessary (D1 might return them as strings)
         const parsedResults = results.map((row: any) => ({
@@ -185,6 +199,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           videos: parsedResults,
           limit,
           offset,
+          total,
         }, 200);
       } catch (error: any) {
         console.error('YouTube Search Error:', error);

@@ -5,6 +5,7 @@ interface SearchResult {
     videos: YoutubeVideo[];
     limit: number;
     offset: number;
+    total: number;
 }
 
 interface ChannelOption {
@@ -137,11 +138,36 @@ export function YoutubeViewer() {
         }
     }, [viewMode]);
 
-    const handleVideoSearch = async (opts?: { offset?: number, channelId?: string, query?: string }) => {
+    const handleSort = (column: string) => {
+        setSortConfig(prev => {
+            const isSame = prev.by === column;
+            const newOrder = isSame && prev.order === 'desc' ? 'asc' : 'desc';
+            return { by: column, order: newOrder };
+        });
+    };
+
+    // Effect to trigger search when sort changes
+    useEffect(() => {
+        if (viewMode === 'search') {
+            handleVideoSearch();
+        }
+    }, [sortConfig]); // Intentionally leave out pagination to handle it manually or add it if we want auto-refetch
+
+    const totalPages = searchResults ? Math.ceil(searchResults.total / pagination.limit) : 0;
+    const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
+
+    const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newLimit = parseInt(e.target.value);
+        setPagination(prev => ({ ...prev, limit: newLimit, offset: 0 }));
+        handleVideoSearch({ limit: newLimit, offset: 0 }); // Pass limit directly to ensure it uses new value
+    };
+
+    const handleVideoSearch = async (opts?: { offset?: number, limit?: number, channelId?: string, query?: string }) => {
         setLoading(true);
         setError(null);
 
         const currentOffset = opts?.offset !== undefined ? opts.offset : pagination.offset;
+        const currentLimit = opts?.limit !== undefined ? opts.limit : pagination.limit;
         const currentChannel = opts?.channelId !== undefined ? opts.channelId : selectedChannel;
         const currentQuery = opts?.query !== undefined ? opts.query : searchQuery;
 
@@ -151,7 +177,7 @@ export function YoutubeViewer() {
             if (currentChannel) params.append('channel_id', currentChannel);
             params.append('sort_by', sortConfig.by);
             params.append('sort_order', sortConfig.order);
-            params.append('limit', pagination.limit.toString());
+            params.append('limit', currentLimit.toString());
             params.append('offset', currentOffset.toString());
 
             const res = await fetch(`/api/youtube/videos?${params.toString()}`);
@@ -162,39 +188,19 @@ export function YoutubeViewer() {
             }
 
             setSearchResults(json);
-            // If we overrode offset, update state
-            if (overrideOffset !== undefined) {
-                setPagination(prev => ({ ...prev, offset: overrideOffset }));
-            }
+
+            // Update pagination state
+            setPagination(prev => ({
+                ...prev,
+                limit: currentLimit,
+                offset: currentOffset
+            }));
         } catch (err: any) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
     };
-
-    // Trigger search when sort or pagination changes (but not offset if called directly via page buttons which call handleVideoSearch)
-    // Actually, easier to just call handleVideoSearch manually on interactions.
-
-    const handleSort = (column: string) => {
-        setSortConfig(prev => {
-            const isSame = prev.by === column;
-            const newOrder = isSame && prev.order === 'desc' ? 'asc' : 'desc';
-            return { by: column, order: newOrder };
-        });
-        // We need to wait for state update or pass new config directly.
-        // Let's use useEffect for reacting to sort/pagination changes?
-        // Or just fire request with new params immediately.
-        // Simpler: Just update state and have a useEffect that watches sort/pagination?
-        // Let's do explicit call to avoid double fetches or complexity.
-    };
-
-    // Effect to trigger search when sort changes
-    useEffect(() => {
-        if (viewMode === 'search') {
-            handleVideoSearch();
-        }
-    }, [sortConfig]); // Intentionally leave out pagination to handle it manually or add it if we want auto-refetch
 
     const handleSync = async () => {
         if (!singleData || !('custom_url' in singleData)) return;
@@ -388,22 +394,67 @@ export function YoutubeViewer() {
                 </table>
 
                 {/* Pagination */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2rem' }}>
-                    <button
-                        disabled={pagination.offset === 0 || loading}
-                        onClick={() => handleVideoSearch({ offset: Math.max(0, pagination.offset - pagination.limit) })}
-                    >
-                        Previous
-                    </button>
-                    <span style={{ alignSelf: 'center' }}>
-                        Page {Math.floor(pagination.offset / pagination.limit) + 1}
-                    </span>
-                    <button
-                        disabled={searchResults.videos.length < pagination.limit || loading}
-                        onClick={() => handleVideoSearch({ offset: pagination.offset + pagination.limit })}
-                    >
-                        Next
-                    </button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', marginTop: '2rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <div>
+                            Total Results: <strong>{searchResults.total}</strong>
+                        </div>
+                        <div>
+                            Page Size:
+                            <select value={pagination.limit} onChange={handlePageSizeChange} style={{ marginLeft: '0.5rem' }}>
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                            disabled={currentPage === 1 || loading}
+                            onClick={() => handleVideoSearch({ offset: 0 })}
+                        >
+                            First
+                        </button>
+                        <button
+                            disabled={currentPage === 1 || loading}
+                            onClick={() => handleVideoSearch({ offset: Math.max(0, (currentPage - 2) * pagination.limit) })}
+                        >
+                            Previous
+                        </button>
+
+                        <span style={{ margin: '0 0.5rem' }}>
+                            Page
+                            <input
+                                type="number"
+                                min={1}
+                                max={totalPages}
+                                value={currentPage}
+                                onChange={(e) => {
+                                    const page = parseInt(e.target.value);
+                                    if (page >= 1 && page <= totalPages) {
+                                        handleVideoSearch({ offset: (page - 1) * pagination.limit });
+                                    }
+                                }}
+                                style={{ width: '50px', marginLeft: '0.5rem', marginRight: '0.5rem' }}
+                            />
+                            of {totalPages}
+                        </span>
+
+                        <button
+                            disabled={currentPage === totalPages || loading}
+                            onClick={() => handleVideoSearch({ offset: currentPage * pagination.limit })}
+                        >
+                            Next
+                        </button>
+                        <button
+                            disabled={currentPage === totalPages || loading}
+                            onClick={() => handleVideoSearch({ offset: (totalPages - 1) * pagination.limit })}
+                        >
+                            Last
+                        </button>
+                    </div>
                 </div>
             </div>
         );

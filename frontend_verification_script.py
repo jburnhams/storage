@@ -1,71 +1,86 @@
-from playwright.sync_api import Page, expect, sync_playwright
+from playwright.sync_api import sync_playwright, expect
 import time
 
-def verify_collections_and_files(page: Page):
-    # Mock auth by setting cookie directly
-    # Note: We need a valid session ID. In integration tests we used seeded data.
-    # Here we are running against local dev server which might be empty or persistent.
-    # We can try to rely on the dev server being fresh or having some data.
-    # But for visual verification, we might just look at the login page if not authenticated,
-    # OR we can assume we can login.
-
-    # Let's try to hit the page. If redirected to login, that's fine for now,
-    # but we really want to see the new UI components (Collections tab, toggles).
-
-    # To bypass auth for visual check, we might need a test mode or just login.
-    # Login requires Google Auth which is hard to automate without credentials.
-
-    # Ideally, we should mock the /api/user endpoint response or similar via Playwright network interception.
-
-    # Intercept /api/user to return a mock user
-    page.route("/api/user", lambda route: route.fulfill(
-        status=200,
-        content_type="application/json",
-        body='{"id":1,"email":"test@example.com","name":"Test User","is_admin":true,"created_at":"2023-01-01T00:00:00Z","updated_at":"2023-01-01T00:00:00Z","last_login_at":null}'
-    ))
-
-    # Intercept /api/collections
-    page.route("/api/collections", lambda route: route.fulfill(
-        status=200,
-        content_type="application/json",
-        body='[{"id":1,"name":"Test Collection","description":"A test collection","secret":"abc","user_id":1,"created_at":"2023-01-01","updated_at":"2023-01-01"}]'
-    ))
-
-    # Intercept /api/storage/entries
-    page.route("/api/storage/entries?*", lambda route: route.fulfill(
-        status=200,
-        content_type="application/json",
-        body='[{"id":1,"key":"file1.txt","string_value":"content","has_blob":false,"secret":"s1","type":"text/plain","filename":null,"user_id":1,"collection_id":null,"created_at":"2023-01-01","updated_at":"2023-01-01"},{"id":2,"key":"col/file2.txt","string_value":"content","has_blob":false,"secret":"s2","type":"text/plain","filename":null,"user_id":1,"collection_id":1,"created_at":"2023-01-01","updated_at":"2023-01-01"}]'
-    ))
-
-    page.goto("http://localhost:8787")
-
-    # Expect Tabs
-    expect(page.get_by_text("Explorer")).to_be_visible()
-    expect(page.get_by_text("Collections")).to_be_visible()
-
-    # Check Explorer View
-    expect(page.get_by_text("Show collection files")).to_be_visible()
-
-    # Click toggle
-    page.get_by_label("Show collection files").check()
-
-    # Check Collections View
-    page.get_by_text("Collections").click()
-    expect(page.get_by_text("Test Collection")).to_be_visible()
-
-    # Click browse
-    page.get_by_text("Browse").click()
-    expect(page.get_by_text("← Back to Collections")).to_be_visible()
-
-    # Take screenshot
-    page.screenshot(path="/home/jules/verification/collections_verification.png")
-
-if __name__ == "__main__":
+def run():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        try:
-            verify_collections_and_files(page)
-        finally:
-            browser.close()
+        context = browser.new_context()
+        page = context.new_page()
+
+        # Mock /api/user to simulate logged in user
+        page.route("**/api/user", lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"id": "test-user", "email": "test@example.com", "is_admin": true, "created_at": "2023-01-01"}'
+        ))
+
+        # Mock channels
+        page.route("**/api/youtube/channels", lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"channels": [{"youtube_id": "UC123", "title": "Test Channel"}]}'
+        ))
+
+        # Mock videos search
+        page.route("**/api/youtube/videos*", lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='''
+            {
+                "videos": [
+                    {
+                        "youtube_id": "vid1",
+                        "title": "Video 1",
+                        "description": "Desc 1",
+                        "published_at": "2023-01-01T00:00:00Z",
+                        "channel_id": "UC123",
+                        "channel_title": "Test Channel",
+                        "thumbnail_url": "https://example.com/thumb.jpg",
+                        "duration": "10:00",
+                        "statistics": "{\\"viewCount\\": \\"1000\\"}",
+                        "raw_json": "{}",
+                        "created_at": "2023-01-01T00:00:00Z",
+                        "updated_at": "2023-01-01T00:00:00Z"
+                    }
+                ],
+                "limit": 10,
+                "offset": 0,
+                "total": 105
+            }
+            '''
+        ))
+
+        page.goto("http://localhost:4173")
+
+        # Wait for loading to finish and dashboard to appear
+        expect(page.get_by_text("Storage Auth Service")).to_be_visible()
+
+        # Click YouTube tab
+        page.get_by_role("button", name="YouTube").click()
+
+        # Click "Search Database" to switch mode
+        page.get_by_text("Search Database").click()
+
+        # Click Search button to trigger initial search (exact match to avoid ambiguity with "Search Database")
+        page.get_by_role("button", name="Search", exact=True).click()
+
+        # Verify "Total Results" text
+        expect(page.get_by_text("Total Results:")).to_be_visible()
+        expect(page.get_by_text("105")).to_be_visible()
+
+        # Verify Pagination controls
+        expect(page.get_by_role("button", name="First")).to_be_visible()
+        expect(page.get_by_role("button", name="Previous")).to_be_visible()
+        expect(page.get_by_role("button", name="Next")).to_be_visible()
+        expect(page.get_by_role("button", name="Last")).to_be_visible()
+
+        # Verify Page Size selector (using nth(1) as it is the second select on the page, after channel filter)
+        page_size_select = page.locator("select").nth(1)
+        expect(page_size_select).to_have_value("10")
+
+        page.screenshot(path="frontend-verification/youtube_search_pagination.png")
+
+        browser.close()
+
+if __name__ == "__main__":
+    run()

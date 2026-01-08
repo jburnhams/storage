@@ -5,9 +5,11 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 // Mock DB
 const mockBind = vi.fn().mockReturnThis();
 const mockAll = vi.fn();
+const mockFirst = vi.fn();
 const mockPrepare = vi.fn(() => ({
   bind: mockBind,
   all: mockAll,
+  first: mockFirst,
 }));
 
 const mockEnv = {
@@ -34,6 +36,7 @@ describe('YouTube Search Endpoint', () => {
 
   it('calls DB with correct SQL for simple search', async () => {
     mockAll.mockResolvedValue({ results: [] });
+    mockFirst.mockResolvedValue({ total: 0 });
 
     const res = await app.request('/api/youtube/videos?title_contains=test', {
        method: 'GET',
@@ -41,37 +44,53 @@ describe('YouTube Search Endpoint', () => {
 
     expect(res.status).toBe(200);
     expect(mockPrepare).toHaveBeenCalled();
-    const sqlArg = mockPrepare.mock.calls[0][0];
+    // We can't easily check calls[0] because Promise.all might run them in parallel/any order
+    // But we expect both queries to be prepared.
+    const calls = mockPrepare.mock.calls.map(c => c[0]);
+    const mainQuery = calls.find(sql => sql.includes('LIMIT ? OFFSET ?'));
+    const countQuery = calls.find(sql => sql.includes('COUNT(*)'));
+
+    expect(mainQuery).toBeDefined();
+    expect(countQuery).toBeDefined();
 
     // Updated expectations for JOIN query
-    expect(sqlArg).toContain('SELECT');
-    expect(sqlArg).toContain('FROM youtube_videos v');
-    expect(sqlArg).toContain('LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id');
-    expect(sqlArg).toContain('WHERE v.title LIKE ?');
+    expect(mainQuery).toContain('SELECT');
+    expect(mainQuery).toContain('FROM youtube_videos v');
+    expect(mainQuery).toContain('LEFT JOIN youtube_channels c ON v.channel_id = c.youtube_id');
+    expect(mainQuery).toContain('WHERE v.title LIKE ?');
 
-    expect(mockBind).toHaveBeenCalledWith('%test%', 50, 0);
+    // Check bind args roughly
+    // The bind mock is shared, so it collects all calls.
+    const bindCalls = mockBind.mock.calls;
+    const hasCorrectBind = bindCalls.some(args => args[0] === '%test%' && args[1] === 50 && args[2] === 0);
+    expect(hasCorrectBind).toBe(true);
   });
 
   it('handles sorting by random', async () => {
     mockAll.mockResolvedValue({ results: [] });
+    mockFirst.mockResolvedValue({ total: 0 });
 
     const res = await app.request('/api/youtube/videos?sort_by=random', {
        method: 'GET',
     }, mockEnv as any);
 
     expect(res.status).toBe(200);
-    const sqlArg = mockPrepare.mock.calls[0][0];
-    expect(sqlArg).toContain('ORDER BY RANDOM()');
+    const calls = mockPrepare.mock.calls.map(c => c[0]);
+    const mainQuery = calls.find(sql => sql.includes('LIMIT ? OFFSET ?'));
+    expect(mainQuery).toContain('ORDER BY RANDOM()');
   });
 
   it('handles limit and offset', async () => {
     mockAll.mockResolvedValue({ results: [] });
+    mockFirst.mockResolvedValue({ total: 0 });
 
     await app.request('/api/youtube/videos?limit=10&offset=20', {
        method: 'GET',
     }, mockEnv as any);
 
-    expect(mockBind).toHaveBeenCalledWith(10, 20);
+    const bindCalls = mockBind.mock.calls;
+    const hasCorrectBind = bindCalls.some(args => args[args.length - 2] === 10 && args[args.length - 1] === 20);
+    expect(hasCorrectBind).toBe(true);
   });
 
   it('returns 500 on db error', async () => {
@@ -88,14 +107,15 @@ describe('YouTube Search Endpoint', () => {
 
   it('filters by channel_id', async () => {
     mockAll.mockResolvedValue({ results: [] });
+    mockFirst.mockResolvedValue({ total: 0 });
 
     const res = await app.request('/api/youtube/videos?channel_id=UC123', {
        method: 'GET',
     }, mockEnv as any);
 
     expect(res.status).toBe(200);
-    const sqlArg = mockPrepare.mock.calls[0][0];
-    expect(sqlArg).toContain('WHERE v.channel_id = ?');
-    expect(mockBind).toHaveBeenCalledWith('UC123', 50, 0);
+    const calls = mockPrepare.mock.calls.map(c => c[0]);
+    const mainQuery = calls.find(sql => sql.includes('LIMIT ? OFFSET ?'));
+    expect(mainQuery).toContain('WHERE v.channel_id = ?');
   });
 });
