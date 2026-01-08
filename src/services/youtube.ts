@@ -529,12 +529,21 @@ export class YoutubeService {
         channelId
     ).run();
 
+    const totalStored = await this.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM youtube_videos WHERE channel_id = ?'
+    ).bind(channelId).first<number>('count');
+
+    if (sampleVideo) {
+        sampleVideo.channel_title = channel.title;
+    }
+
     return {
         count: savedCount,
         range_start: minDate,
         range_end: maxDate,
         sample_video: sampleVideo,
-        is_complete: newBackfillToken === null
+        is_complete: newBackfillToken === null,
+        total_stored_videos: totalStored || 0
     };
   }
 }

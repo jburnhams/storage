@@ -203,4 +203,11 @@ export async function cleanDatabase(db: D1Database): Promise<void> {
   // We delete in order: children then parents.
   await db.prepare("DELETE FROM sessions").run();
   await db.prepare("DELETE FROM users").run();
+  // Delete from YouTube tables
+  try {
+    await db.prepare("DELETE FROM youtube_videos").run();
+    await db.prepare("DELETE FROM youtube_channels").run();
+  } catch (e) {
+    // Tables might not exist yet if migrations haven't run
+  }
 }

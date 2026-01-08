@@ -61,6 +61,7 @@ export interface YoutubeChannel {
   raw_json: string; // JSON string
   created_at: string;
   updated_at: string;
+  sync_start_date?: string | null; // Added based on usage in YoutubeViewer.tsx
 }
 
 export interface YoutubeVideo {
@@ -79,9 +80,10 @@ export interface YoutubeVideo {
 }
 
 export interface YoutubeSyncResponse {
-    count: number;
-    range_start: string | null;
-    range_end: string | null;
-    sample_video: YoutubeVideo | null;
-    is_complete: boolean;
+  count: number;
+  range_start: string | null;
+  range_end: string | null;
+  sample_video: YoutubeVideo | null;
+  is_complete: boolean;
+  total_stored_videos: number;
 }
