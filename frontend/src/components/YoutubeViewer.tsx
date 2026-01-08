@@ -265,7 +265,31 @@ export function YoutubeViewer() {
                     <img src={singleData.thumbnail_url} alt={singleData.title} style={{ width: '200px', borderRadius: '8px' }} />
                     <div>
                         <h2 style={{ marginBottom: '0.5rem' }}>{singleData.title}</h2>
-                        <div style={{ color: 'var(--color-text-dim)', marginBottom: '1rem' }}>{isChannel ? 'Channel' : 'Video'} • {new Date(singleData.published_at).toLocaleDateString()}</div>
+                        <div style={{ color: 'var(--color-text-dim)', marginBottom: '1rem' }}>
+                            {isChannel ? (
+                                'Channel'
+                            ) : (
+                                <>
+                                    Video by{' '}
+                                    <button
+                                        onClick={() => fetchChannelDetail((singleData as YoutubeVideo).channel_id)}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            padding: 0,
+                                            color: 'var(--color-primary)',
+                                            textDecoration: 'underline',
+                                            cursor: 'pointer',
+                                            fontSize: 'inherit',
+                                            fontFamily: 'inherit'
+                                        }}
+                                    >
+                                        {(singleData as YoutubeVideo).channel_title || (singleData as YoutubeVideo).channel_id}
+                                    </button>
+                                </>
+                            )}{' '}
+                            • {new Date(singleData.published_at).toLocaleDateString()}
+                        </div>
                         <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
                             {Object.entries(stats).map(([key, value]) => (
                                 <div key={key} style={{ background: 'var(--color-bg)', padding: '0.5rem', borderRadius: '4px' }}>
