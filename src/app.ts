@@ -11,6 +11,7 @@ import { registerCollectionRoutes } from './routes/collections';
 import { registerBulkRoutes, registerPublicRoutes } from './routes/bulk';
 import { registerYoutubeRoutes } from './routes/youtube';
 import { renderFrontend } from './frontend';
+import { backfillYoutubeData } from './utils/backfill_youtube';
 
 // Create OpenAPI-enabled Hono app
 export function createApp() {
@@ -60,6 +61,18 @@ export function createApp() {
   registerBulkRoutes(app);
   registerPublicRoutes(app);
   registerYoutubeRoutes(app);
+
+  // Temporary Backfill Endpoint
+  app.post('/api/admin/backfill-youtube', async (c) => {
+    // Check for admin session
+    const session = c.get('session');
+    if (!session || !session.user.is_admin) {
+        return c.text('Unauthorized', 401);
+    }
+
+    const result = await backfillYoutubeData(c.env.DB);
+    return c.json(result);
+  });
 
   // Health check
   app.get('/health', (c) => c.text('ok'));

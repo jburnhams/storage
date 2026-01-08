@@ -5,7 +5,8 @@ import type {
   YoutubeListResponse,
   YoutubeChannelResource,
   YoutubeVideoResource,
-  YoutubeSearchResource
+  YoutubeThumbnails,
+  YoutubeThumbnail
 } from '../types';
 
 const DEFAULT_API_BASE_URL = 'https://www.googleapis.com/youtube/v3';
@@ -44,19 +45,73 @@ export class YoutubeService {
     return await response.json() as T;
   }
 
+  // Helper to parse ISO 8601 duration to seconds
+  // Supports P1DT1H1M1S format
+  private parseDuration(duration: string): number {
+    const regex = /P(?:([0-9]+)D)?T(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+)S)?/;
+    const matches = duration.match(regex);
+    if (!matches) return 0;
+
+    const days = parseInt(matches[1] || '0');
+    const hours = parseInt(matches[2] || '0');
+    const minutes = parseInt(matches[3] || '0');
+    const seconds = parseInt(matches[4] || '0');
+
+    return (days * 86400) + (hours * 3600) + (minutes * 60) + seconds;
+  }
+
+  // Helper to find the largest thumbnail
+  private findBestThumbnail(thumbnails: YoutubeThumbnails): { url: string; width: number; height: number } | null {
+    if (!thumbnails) return null;
+
+    // Check keys in order of preference if width/height are reliable,
+    // but the user said "don't rely on names", so we should check all keys that exist
+    // and sort by width * height.
+
+    let best: YoutubeThumbnail | null = null;
+    let maxPixels = 0;
+
+    const keys = ['maxres', 'standard', 'high', 'medium', 'default'] as const;
+
+    // First pass: try standard keys
+    for (const key of keys) {
+        if (thumbnails[key]) {
+             const t = thumbnails[key]!;
+             const pixels = t.width * t.height;
+             if (pixels > maxPixels) {
+                 maxPixels = pixels;
+                 best = t;
+             }
+        }
+    }
+
+    // Fallback: If for some reason we missed something (unlikely with typed keys),
+    // or if we just want to be safe, the above loop covers the known types.
+    // If no dimensions are provided (0x0), we might just fallback to 'maxres' or 'high' URL.
+    // Assuming width/height are present.
+
+    if (best) {
+        return { url: best.url, width: best.width, height: best.height };
+    }
+
+    // If we have urls but no dimensions, fallback to priority list
+    for (const key of keys) {
+        if (thumbnails[key]) {
+            return {
+                url: thumbnails[key]!.url,
+                width: thumbnails[key]!.width || 0,
+                height: thumbnails[key]!.height || 0
+            };
+        }
+    }
+
+    return null;
+  }
+
   async resolveChannelId(input: string): Promise<string> {
-    // 1. If it looks like a Channel ID (UC...) and length is 24, assume it is an ID.
     if (input.startsWith('UC') && input.length === 24) {
       return input;
     }
-
-    // 2. Try to resolve using forHandle
-    // Note: input should be a handle, but if it doesn't start with @, maybe we prepend?
-    // The user said "looking up channel id from a name".
-    // If we assume strict handle resolution, we might want to ensure it works.
-    // YouTube's forHandle takes the handle string.
-
-    // Attempt resolution
     try {
         const listRes = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
             forHandle: input,
@@ -67,11 +122,8 @@ export class YoutubeService {
             return listRes.items[0].id;
         }
     } catch (e) {
-        // Fall through or re-throw?
         console.error("Error resolving handle:", e);
     }
-
-    // If forHandle failed, we throw. We removed the expensive 'search' fallback.
     throw new Error(`Channel not found for: ${input}`);
   }
 
@@ -83,41 +135,34 @@ export class YoutubeService {
       'SELECT * FROM youtube_channels WHERE youtube_id = ?'
     ).bind(id).first<YoutubeChannel>();
 
-    if (cached) {
-      return cached;
-    }
+    if (cached) return cached;
 
-    // 2. Check DB by custom_url (handle)
+    // 2. Check DB by custom_url
     cached = await this.env.DB.prepare(
       'SELECT * FROM youtube_channels WHERE custom_url = ? OR custom_url = ?'
     ).bind(idOrHandle, idOrHandle.toLowerCase()).first<YoutubeChannel>();
 
-    if (cached) {
-      return cached;
-    }
+    if (cached) return cached;
 
     // 3. Resolve ID if needed
     if (!id.startsWith('UC') || id.length !== 24) {
       try {
         id = await this.resolveChannelId(idOrHandle);
-
-        // Check DB again with resolved ID
         cached = await this.env.DB.prepare(
           'SELECT * FROM youtube_channels WHERE youtube_id = ?'
         ).bind(id).first<YoutubeChannel>();
-
-        if (cached) {
-          return cached;
-        }
+        if (cached) return cached;
       } catch (e) {
         throw e;
       }
     }
 
-    // 4. Fetch from API using ID
+    // 4. Fetch from API
+    // Added 'snippet,statistics,contentDetails' (kept same for now)
+    // We should add country if we want it. 'snippet' contains country.
     const data = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
       id: id,
-      part: 'snippet,statistics,contentDetails' // Added contentDetails for upload playlist
+      part: 'snippet,statistics,contentDetails'
     });
 
     if (!data.items || data.items.length === 0) {
@@ -126,39 +171,40 @@ export class YoutubeService {
 
     const item = data.items[0];
     const now = new Date().toISOString();
-
-    // Extract upload playlist ID
-    // The type definition for contentDetails needs to support relatedPlaylists
-    // We cast to any or update types. Let's update types properly in the future but for now I'll cast or assume it's there.
-    // Actually, I should check my types.ts. YoutubeChannelResource contentDetails?
-    // I need to update types if I want type safety.
-    // Ideally I should update types.ts first, but I already did. Let's check what I added.
-    // I didn't add relatedPlaylists to types. Let's use `any` cast for now to proceed, or update types.
-    // Wait, I can just read it as `any`.
     const contentDetails = item.contentDetails as any;
     const uploadPlaylistId = contentDetails?.relatedPlaylists?.uploads || null;
+
+    const bestThumb = this.findBestThumbnail(item.snippet.thumbnails);
 
     const channel: YoutubeChannel = {
       youtube_id: item.id,
       title: item.snippet.title,
       description: item.snippet.description,
       custom_url: item.snippet.customUrl || null,
-      thumbnail_url: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
+      thumbnail_url: bestThumb?.url || '',
       published_at: item.snippet.publishedAt,
       statistics: JSON.stringify(item.statistics),
       raw_json: JSON.stringify(item),
       created_at: now,
       updated_at: now,
       upload_playlist_id: uploadPlaylistId,
-      last_sync_token: null
+      last_sync_token: null,
+      // New Fields
+      view_count: parseInt(item.statistics.viewCount || '0'),
+      subscriber_count: parseInt(item.statistics.subscriberCount || '0'),
+      video_count: parseInt(item.statistics.videoCount || '0'),
+      country: item.snippet.country || null,
+      best_thumbnail_url: bestThumb?.url || null,
+      best_thumbnail_width: bestThumb?.width || null,
+      best_thumbnail_height: bestThumb?.height || null
     };
 
     // 5. Store in DB
-    // We use INSERT OR REPLACE logic, effectively upserting
     await this.env.DB.prepare(
       `INSERT INTO youtube_channels
-       (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at, upload_playlist_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (youtube_id, title, description, custom_url, thumbnail_url, published_at, statistics, raw_json, created_at, updated_at, upload_playlist_id,
+        view_count, subscriber_count, video_count, country, best_thumbnail_url, best_thumbnail_width, best_thumbnail_height)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(youtube_id) DO UPDATE SET
        title=excluded.title,
        description=excluded.description,
@@ -167,7 +213,14 @@ export class YoutubeService {
        statistics=excluded.statistics,
        raw_json=excluded.raw_json,
        updated_at=excluded.updated_at,
-       upload_playlist_id=excluded.upload_playlist_id`
+       upload_playlist_id=excluded.upload_playlist_id,
+       view_count=excluded.view_count,
+       subscriber_count=excluded.subscriber_count,
+       video_count=excluded.video_count,
+       country=excluded.country,
+       best_thumbnail_url=excluded.best_thumbnail_url,
+       best_thumbnail_width=excluded.best_thumbnail_width,
+       best_thumbnail_height=excluded.best_thumbnail_height`
     ).bind(
       channel.youtube_id,
       channel.title,
@@ -179,7 +232,14 @@ export class YoutubeService {
       channel.raw_json,
       channel.created_at,
       channel.updated_at,
-      channel.upload_playlist_id
+      channel.upload_playlist_id,
+      channel.view_count,
+      channel.subscriber_count,
+      channel.video_count,
+      channel.country,
+      channel.best_thumbnail_url,
+      channel.best_thumbnail_width,
+      channel.best_thumbnail_height
     ).run();
 
     return channel;
@@ -191,14 +251,13 @@ export class YoutubeService {
       'SELECT * FROM youtube_videos WHERE youtube_id = ?'
     ).bind(id).first<YoutubeVideo>();
 
-    if (cached) {
-      return cached;
-    }
+    if (cached) return cached;
 
     // 2. Fetch from API
+    // Added 'status' to part
     const data = await this.fetchFromApi<YoutubeListResponse<YoutubeVideoResource>>('videos', {
       id: id,
-      part: 'snippet,contentDetails,statistics'
+      part: 'snippet,contentDetails,statistics,status'
     });
 
     if (!data.items || data.items.length === 0) {
@@ -207,6 +266,7 @@ export class YoutubeService {
 
     const item = data.items[0];
     const now = new Date().toISOString();
+    const bestThumb = this.findBestThumbnail(item.snippet.thumbnails);
 
     const video: YoutubeVideo = {
       youtube_id: item.id,
@@ -214,19 +274,36 @@ export class YoutubeService {
       description: item.snippet.description,
       published_at: item.snippet.publishedAt,
       channel_id: item.snippet.channelId,
-      thumbnail_url: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
+      thumbnail_url: bestThumb?.url || '',
       duration: item.contentDetails.duration,
       statistics: JSON.stringify(item.statistics),
       raw_json: JSON.stringify(item),
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      // New Fields
+      duration_seconds: this.parseDuration(item.contentDetails.duration),
+      view_count: parseInt(item.statistics.viewCount || '0'),
+      like_count: parseInt(item.statistics.likeCount || '0'),
+      comment_count: parseInt(item.statistics.commentCount || '0'),
+      best_thumbnail_url: bestThumb?.url || null,
+      best_thumbnail_width: bestThumb?.width || null,
+      best_thumbnail_height: bestThumb?.height || null,
+      definition: item.contentDetails.definition || null,
+      dimension: item.contentDetails.dimension || null,
+      licensed_content: item.contentDetails.licensedContent ? 1 : 0,
+      caption: item.contentDetails.caption === 'true' ? 1 : 0,
+      privacy_status: item.status?.privacyStatus || null,
+      embeddable: item.status?.embeddable ? 1 : 0,
+      made_for_kids: item.status?.madeForKids ? 1 : 0
     };
 
     // 3. Store in DB
     await this.env.DB.prepare(
       `INSERT INTO youtube_videos
-       (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at,
+        duration_seconds, view_count, like_count, comment_count, best_thumbnail_url, best_thumbnail_width, best_thumbnail_height,
+        definition, dimension, licensed_content, caption, privacy_status, embeddable, made_for_kids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       video.youtube_id,
       video.title,
@@ -238,7 +315,21 @@ export class YoutubeService {
       video.statistics,
       video.raw_json,
       video.created_at,
-      video.updated_at
+      video.updated_at,
+      video.duration_seconds,
+      video.view_count,
+      video.like_count,
+      video.comment_count,
+      video.best_thumbnail_url,
+      video.best_thumbnail_width,
+      video.best_thumbnail_height,
+      video.definition,
+      video.dimension,
+      video.licensed_content,
+      video.caption,
+      video.privacy_status,
+      video.embeddable,
+      video.made_for_kids
     ).run();
 
     return video;
@@ -256,9 +347,6 @@ export class YoutubeService {
 
     // If upload_playlist_id is missing (old record), force refresh
     if (!channel.upload_playlist_id) {
-         // Force refresh by calling API manually or just call getChannel?
-         // Since getChannel reads DB first, we need to bypass or ensure update.
-         // Let's manually refetch and update.
          const data = await this.fetchFromApi<YoutubeListResponse<YoutubeChannelResource>>('channels', {
             id: channelId,
             part: 'snippet,statistics,contentDetails'
@@ -268,7 +356,6 @@ export class YoutubeService {
              const contentDetails = item.contentDetails as any;
              channel.upload_playlist_id = contentDetails?.relatedPlaylists?.uploads || null;
 
-             // Update DB
              await this.env.DB.prepare('UPDATE youtube_channels SET upload_playlist_id = ? WHERE youtube_id = ?')
                 .bind(channel.upload_playlist_id, channelId).run();
          }
@@ -284,11 +371,6 @@ export class YoutubeService {
     let sampleVideo: YoutubeVideo | null = null;
     let savedCount = 0;
 
-    // We will collect IDs to fetch.
-    // Phase 1: Always fetch Page 1 (Latest)
-    // Phase 2: If lastSyncToken exists, fetch that Page (Backfill)
-
-    // We use a Set to avoid duplicates if Page 1 overlaps with Backfill token (unlikely but possible)
     const videoIdsToFetch = new Set<string>();
     let newBackfillToken: string | null = lastSyncToken || null;
 
@@ -306,15 +388,11 @@ export class YoutubeService {
         }
     }
 
-    // If we have no backfill token, the "nextPageToken" from latestRes is our start for backfill next time.
     if (!lastSyncToken && latestRes.nextPageToken) {
         newBackfillToken = latestRes.nextPageToken;
     }
 
     // --- Phase 2: Backfill ---
-    // Only if we have a valid token (and it's not the same as what we just fetched, though hard to know)
-    // If we just started (no lastSyncToken), we already got page 1.
-    // If we have lastSyncToken, we fetch it.
     if (lastSyncToken) {
         try {
             const backfillRes = await this.fetchFromApi<YoutubeListResponse<any>>('playlistItems', {
@@ -331,13 +409,11 @@ export class YoutubeService {
                 }
             }
 
-            // Update token for next time
-            newBackfillToken = backfillRes.nextPageToken || null; // If null, we reached end
+            newBackfillToken = backfillRes.nextPageToken || null;
         } catch (e: any) {
-            // If token is invalid (400), we might want to reset it?
             if (e.message && e.message.includes('400')) {
                 console.warn("Invalid page token, resetting backfill token.");
-                newBackfillToken = null; // Start over next time (or from page 2 of fresh?)
+                newBackfillToken = null;
             } else {
                 throw e;
             }
@@ -345,15 +421,10 @@ export class YoutubeService {
     }
 
     // --- Processing ---
-    // Filter out existing videos to save cost
     const uniqueIds = Array.from(videoIdsToFetch);
     const idsToFetchDetails: string[] = [];
 
-    // Check DB for existence
-    // We can do a batched check or one by one. Batched is better.
-    // SQLite limits parameters, but 100 is fine.
     if (uniqueIds.length > 0) {
-        // Chunk checks
         for (let i = 0; i < uniqueIds.length; i += 50) {
             const batch = uniqueIds.slice(i, i + 50);
             const placeholders = batch.map(() => '?').join(',');
@@ -375,41 +446,61 @@ export class YoutubeService {
     if (idsToFetchDetails.length > 0) {
         for (let i = 0; i < idsToFetchDetails.length; i += 50) {
             const batchIds = idsToFetchDetails.slice(i, i + 50);
+            // Added 'status' here too
             const videosRes = await this.fetchFromApi<YoutubeListResponse<YoutubeVideoResource>>('videos', {
                 id: batchIds.join(','),
-                part: 'snippet,contentDetails,statistics'
+                part: 'snippet,contentDetails,statistics,status'
             });
 
             if (videosRes.items) {
                 const insertStmt = this.env.DB.prepare(
                     `INSERT OR REPLACE INTO youtube_videos
-                     (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                     (youtube_id, title, description, published_at, channel_id, thumbnail_url, duration, statistics, raw_json, created_at, updated_at,
+                      duration_seconds, view_count, like_count, comment_count, best_thumbnail_url, best_thumbnail_width, best_thumbnail_height,
+                      definition, dimension, licensed_content, caption, privacy_status, embeddable, made_for_kids)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 );
 
                 const batch = [];
                 const nowIso = new Date().toISOString();
 
                 for (const item of videosRes.items) {
+                     const bestThumb = this.findBestThumbnail(item.snippet.thumbnails);
                      const v: YoutubeVideo = {
                         youtube_id: item.id,
                         title: item.snippet.title,
                         description: item.snippet.description,
                         published_at: item.snippet.publishedAt,
                         channel_id: item.snippet.channelId,
-                        thumbnail_url: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || '',
+                        thumbnail_url: bestThumb?.url || '',
                         duration: item.contentDetails.duration,
                         statistics: JSON.stringify(item.statistics),
                         raw_json: JSON.stringify(item),
                         created_at: nowIso,
-                        updated_at: nowIso
+                        updated_at: nowIso,
+                        duration_seconds: this.parseDuration(item.contentDetails.duration),
+                        view_count: parseInt(item.statistics.viewCount || '0'),
+                        like_count: parseInt(item.statistics.likeCount || '0'),
+                        comment_count: parseInt(item.statistics.commentCount || '0'),
+                        best_thumbnail_url: bestThumb?.url || null,
+                        best_thumbnail_width: bestThumb?.width || null,
+                        best_thumbnail_height: bestThumb?.height || null,
+                        definition: item.contentDetails.definition || null,
+                        dimension: item.contentDetails.dimension || null,
+                        licensed_content: item.contentDetails.licensedContent ? 1 : 0,
+                        caption: item.contentDetails.caption === 'true' ? 1 : 0,
+                        privacy_status: item.status?.privacyStatus || null,
+                        embeddable: item.status?.embeddable ? 1 : 0,
+                        made_for_kids: item.status?.madeForKids ? 1 : 0
                      };
 
                      if (!sampleVideo) sampleVideo = v;
 
                      batch.push(insertStmt.bind(
                         v.youtube_id, v.title, v.description, v.published_at, v.channel_id,
-                        v.thumbnail_url, v.duration, v.statistics, v.raw_json, v.created_at, v.updated_at
+                        v.thumbnail_url, v.duration, v.statistics, v.raw_json, v.created_at, v.updated_at,
+                        v.duration_seconds, v.view_count, v.like_count, v.comment_count, v.best_thumbnail_url, v.best_thumbnail_width, v.best_thumbnail_height,
+                        v.definition, v.dimension, v.licensed_content, v.caption, v.privacy_status, v.embeddable, v.made_for_kids
                      ));
                 }
 
@@ -435,10 +526,10 @@ export class YoutubeService {
 
     return {
         count: savedCount,
-        range_start: null, // Deprecated concept
-        range_end: null,   // Deprecated concept
+        range_start: null,
+        range_end: null,
         sample_video: sampleVideo,
-        is_complete: newBackfillToken === null // If null, we exhausted the list
+        is_complete: newBackfillToken === null
     };
   }
 }

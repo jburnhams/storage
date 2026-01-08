@@ -181,6 +181,14 @@ export interface YoutubeChannel {
   last_sync_at?: string | null;
   upload_playlist_id?: string | null;
   last_sync_token?: string | null;
+  // New Fields
+  view_count?: number | null;
+  subscriber_count?: number | null;
+  video_count?: number | null;
+  country?: string | null;
+  best_thumbnail_url?: string | null;
+  best_thumbnail_width?: number | null;
+  best_thumbnail_height?: number | null;
 }
 
 export interface YoutubeVideo {
@@ -195,6 +203,21 @@ export interface YoutubeVideo {
   raw_json: string; // JSON
   created_at: string;
   updated_at: string;
+  // New Fields
+  duration_seconds?: number | null;
+  view_count?: number | null;
+  like_count?: number | null;
+  comment_count?: number | null;
+  best_thumbnail_url?: string | null;
+  best_thumbnail_width?: number | null;
+  best_thumbnail_height?: number | null;
+  definition?: string | null;
+  dimension?: string | null;
+  licensed_content?: boolean | number | null;
+  caption?: boolean | number | null;
+  privacy_status?: string | null;
+  embeddable?: boolean | number | null;
+  made_for_kids?: boolean | number | null;
 }
 
 // ===== YouTube API Response Types (Partial) =====
@@ -235,6 +258,7 @@ export interface YoutubeChannelResource {
   id: string;
   snippet: YoutubeChannelSnippet;
   statistics: YoutubeChannelStatistics;
+  contentDetails?: any; // To allow for relatedPlaylists access
 }
 
 export interface YoutubeVideoSnippet {
@@ -266,6 +290,15 @@ export interface YoutubeVideoStatistics {
   commentCount: string;
 }
 
+export interface YoutubeVideoStatus {
+  uploadStatus: string;
+  privacyStatus: string;
+  license: string;
+  embeddable: boolean;
+  publicStatsViewable: boolean;
+  madeForKids: boolean;
+}
+
 export interface YoutubeVideoResource {
   kind: "youtube#video";
   etag: string;
@@ -273,6 +306,7 @@ export interface YoutubeVideoResource {
   snippet: YoutubeVideoSnippet;
   contentDetails: YoutubeVideoContentDetails;
   statistics: YoutubeVideoStatistics;
+  status?: YoutubeVideoStatus;
 }
 
 export interface YoutubeListResponse<T> {
