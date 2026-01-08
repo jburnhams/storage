@@ -16,13 +16,22 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     raw_json: z.string(), // JSON string
     created_at: z.string(),
     updated_at: z.string(),
+    upload_playlist_id: z.string().nullable().optional(),
+    last_sync_token: z.string().nullable().optional(),
+    view_count: z.number().nullable().optional(),
+    subscriber_count: z.number().nullable().optional(),
+    video_count: z.number().nullable().optional(),
+    country: z.string().nullable().optional(),
+    best_thumbnail_url: z.string().nullable().optional(),
+    best_thumbnail_width: z.number().nullable().optional(),
+    best_thumbnail_height: z.number().nullable().optional(),
   });
 
+  // Omit raw_json for the list view
+  const channelListEntrySchema = channelSchema.omit({ raw_json: true });
+
   const channelListSchema = z.object({
-    channels: z.array(z.object({
-        youtube_id: z.string(),
-        title: z.string(),
-    })),
+    channels: z.array(channelListEntrySchema),
   });
 
   const videoSchema = z.object({
@@ -89,17 +98,20 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     }),
     async (c) => {
         try {
-            const { results } = await c.env.DB.prepare(
-                'SELECT youtube_id, title FROM youtube_channels ORDER BY title ASC'
-            ).all();
+            // Select all columns EXCEPT raw_json
+            const sql = `
+                SELECT
+                    youtube_id, title, description, custom_url, thumbnail_url,
+                    published_at, statistics, created_at, updated_at,
+                    upload_playlist_id, last_sync_token,
+                    view_count, subscriber_count, video_count, country,
+                    best_thumbnail_url, best_thumbnail_width, best_thumbnail_height
+                FROM youtube_channels
+                ORDER BY title ASC
+            `;
+            const { results } = await c.env.DB.prepare(sql).all();
 
-            // Map results to ensure type safety if needed, though D1 returns objects
-            const channels = results.map((r: any) => ({
-                youtube_id: r.youtube_id,
-                title: r.title,
-            }));
-
-            return c.json({ channels }, 200);
+            return c.json({ channels: results }, 200);
         } catch (error: any) {
             console.error('YouTube Channels Error:', error);
             return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
@@ -124,10 +136,6 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           sort_order: z.string().optional(),
           channel_id: z.string().optional(),
           title_contains: z.string().optional(),
-          // Allow other keys loosely? Zod doesn't strictly allow arbitrary keys by default without .passthrough()
-          // But Hono/Zod integration might strip unknown keys.
-          // To allow arbitrary filters, we might need to skip strict validation or define common filters.
-          // For now, let's explicitly add common ones to valid schema for docs, and use c.req.query() for full access.
         }).passthrough(),
       },
       responses: {
@@ -176,13 +184,8 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
 
         const { results } = await c.env.DB.prepare(sql).bind(...whereParams, limit, offset).all();
 
-        // Parse JSON fields if necessary (D1 might return them as strings)
-        const parsedResults = results.map((row: any) => ({
-            ...row,
-        }));
-
         return c.json({
-          videos: parsedResults,
+          videos: results,
           limit,
           offset,
         }, 200);
