@@ -370,6 +370,8 @@ export class YoutubeService {
 
     let sampleVideo: YoutubeVideo | null = null;
     let savedCount = 0;
+    let minDate: string | null = null;
+    let maxDate: string | null = null;
 
     const videoIdsToFetch = new Set<string>();
     let newBackfillToken: string | null = lastSyncToken || null;
@@ -494,6 +496,9 @@ export class YoutubeService {
                         made_for_kids: item.status?.madeForKids ? 1 : 0
                      };
 
+                     if (!minDate || v.published_at < minDate) minDate = v.published_at;
+                     if (!maxDate || v.published_at > maxDate) maxDate = v.published_at;
+
                      if (!sampleVideo) sampleVideo = v;
 
                      batch.push(insertStmt.bind(
@@ -526,8 +531,8 @@ export class YoutubeService {
 
     return {
         count: savedCount,
-        range_start: null,
-        range_end: null,
+        range_start: minDate,
+        range_end: maxDate,
         sample_video: sampleVideo,
         is_complete: newBackfillToken === null
     };

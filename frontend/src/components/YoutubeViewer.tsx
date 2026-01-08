@@ -37,6 +37,7 @@ export function YoutubeViewer() {
     // Sync state
     const [syncing, setSyncing] = useState(false);
     const [syncProgress, setSyncProgress] = useState<YoutubeSyncResponse | null>(null);
+    const [syncRange, setSyncRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
     const [totalFetched, setTotalFetched] = useState(0);
 
     const fetchChannelDetail = async (channelId: string) => {
@@ -207,6 +208,7 @@ export function YoutubeViewer() {
         setSyncing(true);
         setTotalFetched(0);
         setSyncProgress(null);
+        setSyncRange({ start: null, end: null });
         setError(null);
 
         let isComplete = false;
@@ -222,6 +224,21 @@ export function YoutubeViewer() {
                 const progress = json as YoutubeSyncResponse;
                 setSyncProgress(progress);
                 setTotalFetched(prev => prev + progress.count);
+
+                // Update accumulated range
+                setSyncRange(prev => {
+                    let start = prev.start;
+                    let end = prev.end;
+
+                    if (progress.range_start) {
+                        if (!start || progress.range_start < start) start = progress.range_start;
+                    }
+                    if (progress.range_end) {
+                        if (!end || progress.range_end > end) end = progress.range_end;
+                    }
+                    return { start, end };
+                });
+
                 isComplete = progress.is_complete;
                 if (isComplete) break;
             }
@@ -248,7 +265,7 @@ export function YoutubeViewer() {
                 {syncing && <div style={{ color: 'var(--color-primary)' }}>Syncing...</div>}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginTop: '0.5rem' }}>
                     <div><strong>Total Fetched This Run:</strong> {totalFetched}</div>
-                    <div><strong>Current Range:</strong><br/>{syncProgress ? <>{new Date(syncProgress.range_start).toLocaleDateString()} - {new Date(syncProgress.range_end).toLocaleDateString()}</> : 'Starting...'}</div>
+                    <div><strong>Current Range:</strong><br/>{syncRange.start && syncRange.end ? <>{new Date(syncRange.start).toLocaleDateString()} - {new Date(syncRange.end).toLocaleDateString()}</> : 'Starting...'}</div>
                 </div>
                 {syncProgress?.is_complete && <div style={{ marginTop: '1rem', color: 'green', fontWeight: 'bold' }}>Sync Complete!</div>}
             </div>
