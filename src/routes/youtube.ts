@@ -53,10 +53,11 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
 
   const syncResponseSchema = z.object({
     count: z.number(),
-    range_start: z.string(),
-    range_end: z.string(),
+    range_start: z.string().nullable(),
+    range_end: z.string().nullable(),
     sample_video: videoSchema.nullable(),
     is_complete: z.boolean(),
+    total_stored_videos: z.number(),
   });
 
   // GET /api/youtube/channels

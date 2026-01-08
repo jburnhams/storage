@@ -37,11 +37,26 @@ describe('YouTube Integration', () => {
                   thumbnails: { high: { url: 'http://mock.img/high.jpg' } },
                   publishedAt: '2023-01-01T00:00:00Z',
                 },
-                statistics: { viewCount: '1000' }
+                statistics: { viewCount: '1000' },
+                contentDetails: {
+                  relatedPlaylists: { uploads: 'UU1234567890abcdefghijkl' }
+                }
               }]
             }));
             return;
           }
+        }
+
+        if (url.pathname === '/playlistItems') {
+             res.writeHead(200, { 'Content-Type': 'application/json' });
+             res.end(JSON.stringify({
+                items: [{
+                    snippet: {
+                        resourceId: { videoId: 'V123' }
+                    }
+                }]
+             }));
+             return;
         }
 
         if (url.pathname === '/videos') {
@@ -54,7 +69,7 @@ describe('YouTube Integration', () => {
                 snippet: {
                   title: 'Mock Video',
                   description: 'Mock Video Desc',
-                  channelId: 'UC123',
+                  channelId: 'UC1234567890abcdefghijkl',
                   thumbnails: { default: { url: 'http://mock.img/def.jpg' } },
                   publishedAt: '2023-01-02T00:00:00Z',
                 },
@@ -156,5 +171,29 @@ describe('YouTube Integration', () => {
     const body = await res.json() as any;
     expect(body.error).toBe('NOT_FOUND');
     expect(apiCallCount).toBe(1);
+  });
+
+  it('should sync channel videos and return total stored videos', async () => {
+      const channelId = 'UC1234567890abcdefghijkl';
+      const cookie = 'storage_session=test-session-admin';
+
+      // Ensure channel exists
+      await mf.dispatchFetch(`http://localhost/api/youtube/channel/${channelId}`, {
+          headers: { Cookie: cookie },
+      });
+
+      const syncRes = await mf.dispatchFetch(`http://localhost/api/youtube/channel/${channelId}/sync`, {
+          method: 'POST',
+          headers: { Cookie: cookie },
+      });
+
+      expect(syncRes.status).toBe(200);
+      const syncData = await syncRes.json() as any;
+
+      expect(syncData.count).toBeGreaterThan(0);
+      expect(syncData.is_complete).toBe(true);
+      expect(syncData.total_stored_videos).toBeGreaterThan(0);
+      expect(syncData.sample_video).toBeDefined();
+      expect(syncData.sample_video.title).toBe('Mock Video');
   });
 });

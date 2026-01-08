@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { YoutubeChannel, YoutubeVideo, YoutubeSyncResponse } from '../types';
+import { VideoTable } from './VideoTable';
 
 interface SearchResult {
     videos: YoutubeVideo[];
@@ -236,14 +237,25 @@ export function YoutubeViewer() {
 
     const renderSyncProgress = () => {
         if (!syncProgress && !syncing) return null;
+
         return (
             <div style={{ background: 'var(--color-bg)', padding: '1rem', borderRadius: '4px', marginTop: '1rem', border: '1px solid var(--color-border)' }}>
                 <h3>Sync Progress</h3>
                 {syncing && <div style={{ color: 'var(--color-primary)' }}>Syncing...</div>}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginTop: '0.5rem' }}>
                     <div><strong>Total Fetched This Run:</strong> {totalFetched}</div>
-                    <div><strong>Current Range:</strong><br/>{syncProgress ? <>{new Date(syncProgress.range_start).toLocaleDateString()} - {new Date(syncProgress.range_end).toLocaleDateString()}</> : 'Starting...'}</div>
+                    {syncProgress && <div><strong>Total Stored Videos:</strong> {syncProgress.total_stored_videos}</div>}
                 </div>
+                {syncProgress?.sample_video && (
+                     <div style={{ marginTop: '1rem' }}>
+                        <strong>Sample Video from Sync:</strong>
+                        <VideoTable
+                            videos={[syncProgress.sample_video]}
+                            onVideoClick={fetchVideoDetail}
+                            onChannelClick={fetchChannelDetail}
+                        />
+                    </div>
+                )}
                 {syncProgress?.is_complete && <div style={{ marginTop: '1rem', color: 'green', fontWeight: 'bold' }}>Sync Complete!</div>}
             </div>
         );
@@ -305,87 +317,15 @@ export function YoutubeViewer() {
             return searchResults ? <div style={{ marginTop: '2rem' }}>No results found.</div> : null;
         }
 
-        const renderSortIcon = (col: string) => {
-            if (sortConfig.by !== col) return <span style={{ opacity: 0.3 }}>⇅</span>;
-            return sortConfig.order === 'asc' ? '↑' : '↓';
-        };
-
-        const headers = [
-            { label: 'Title', key: 'title' },
-            { label: 'Published', key: 'published_at' },
-            { label: 'Views', key: 'statistics.viewCount' },
-            { label: 'Channel', key: 'channel_id' },
-        ];
-
         return (
-            <div style={{ marginTop: '2rem', overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
-                            <th style={{ padding: '0.75rem', textAlign: 'left' }}>Thumb</th>
-                            {headers.map(h => (
-                                <th
-                                    key={h.key}
-                                    style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
-                                    onClick={() => handleSort(h.key)}
-                                >
-                                    {h.label} {renderSortIcon(h.key)}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {searchResults.videos.map(video => {
-                            let views = 'N/A';
-                            try {
-                                views = JSON.parse(video.statistics).viewCount || 'N/A';
-                            } catch (e) {}
-
-                            return (
-                                <tr key={video.youtube_id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                                    <td style={{ padding: '0.75rem' }}>
-                                        <img
-                                            src={video.thumbnail_url}
-                                            alt=""
-                                            style={{ height: '60px', borderRadius: '4px', cursor: 'pointer' }}
-                                            onClick={() => fetchVideoDetail(video.youtube_id)}
-                                        />
-                                    </td>
-                                    <td style={{ padding: '0.75rem', maxWidth: '300px' }}>
-                                        <div
-                                            style={{ fontWeight: 'bold', marginBottom: '0.25rem', cursor: 'pointer', color: 'var(--color-primary)' }}
-                                            onClick={() => fetchVideoDetail(video.youtube_id)}
-                                        >
-                                            {video.title}
-                                        </div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)' }}>{video.duration}</div>
-                                    </td>
-                                    <td style={{ padding: '0.75rem' }}>{new Date(video.published_at).toLocaleDateString()}</td>
-                                    <td style={{ padding: '0.75rem' }}>{parseInt(views).toLocaleString()}</td>
-                                    <td style={{ padding: '0.75rem' }}>
-                                        <button
-                                            onClick={() => {
-                                                fetchChannelDetail(video.channel_id);
-                                            }}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                color: 'var(--color-primary)',
-                                                cursor: 'pointer',
-                                                textDecoration: 'underline',
-                                                padding: 0,
-                                                fontFamily: 'inherit',
-                                                fontSize: 'inherit'
-                                            }}
-                                        >
-                                            {video.channel_title || video.channel_id}
-                                        </button>
-                                    </td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
+            <div style={{ marginTop: '2rem' }}>
+                <VideoTable
+                    videos={searchResults.videos}
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                    onVideoClick={fetchVideoDetail}
+                    onChannelClick={fetchChannelDetail}
+                />
 
                 {/* Pagination */}
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2rem' }}>
