@@ -67,11 +67,11 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     total_stored_videos: z.number(),
   });
 
-  // GET /api/videos/random
+  // GET /api/youtube/videos/random
   app.openapi(
     createRoute({
       method: 'get',
-      path: '/api/videos/random',
+      path: '/api/youtube/videos/random',
       tags: ['YouTube'],
       summary: 'Get Random Videos',
       description: 'Get a random selection of videos, optionally filtered by duration.',

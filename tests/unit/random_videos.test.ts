@@ -46,7 +46,7 @@ describe('YouTube Random Videos API', () => {
   });
 
   it('should return random videos', async () => {
-    const req = new Request('http://localhost/api/videos/random?count=2', {
+    const req = new Request('http://localhost/api/youtube/videos/random?count=2', {
       headers: { Cookie: 'storage_session=test-session' },
     });
     const ctx = createExecutionContext();
@@ -62,7 +62,7 @@ describe('YouTube Random Videos API', () => {
   });
 
   it('should filter by min_duration', async () => {
-    const req = new Request('http://localhost/api/videos/random?min_duration=400', {
+    const req = new Request('http://localhost/api/youtube/videos/random?min_duration=400', {
       headers: { Cookie: 'storage_session=test-session' },
     });
     const ctx = createExecutionContext();
@@ -77,7 +77,7 @@ describe('YouTube Random Videos API', () => {
   });
 
   it('should filter by max_duration', async () => {
-    const req = new Request('http://localhost/api/videos/random?max_duration=400', {
+    const req = new Request('http://localhost/api/youtube/videos/random?max_duration=400', {
       headers: { Cookie: 'storage_session=test-session' },
     });
     const ctx = createExecutionContext();
@@ -92,7 +92,7 @@ describe('YouTube Random Videos API', () => {
   });
 
   it('should return 401 if not authenticated', async () => {
-    const req = new Request('http://localhost/api/videos/random');
+    const req = new Request('http://localhost/api/youtube/videos/random');
     const ctx = createExecutionContext();
     const res = await app.fetch(req, env, ctx);
 
