@@ -163,8 +163,8 @@ export function YoutubeViewer() {
 
             setSearchResults(json);
             // If we overrode offset, update state
-            if (overrideOffset !== undefined) {
-                setPagination(prev => ({ ...prev, offset: overrideOffset }));
+            if (opts?.offset !== undefined) {
+                setPagination(prev => ({ ...prev, offset: opts!.offset! }));
             }
         } catch (err: any) {
             setError(err.message);
