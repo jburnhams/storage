@@ -15,7 +15,11 @@ interface ChannelOption {
     title: string;
 }
 
-export function YoutubeViewer() {
+interface YoutubeViewerProps {
+    sessionId?: string | null;
+}
+
+export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
     // Mode switcher
     const [viewMode, setViewMode] = useState<'id' | 'search'>('id');
 
@@ -64,7 +68,10 @@ export function YoutubeViewer() {
                     const player = new TubePlayer(playerRef.current!.id);
                     playerInstance.current = player;
 
-                    await player.initialize({ cache: true });
+                    await player.initialize({
+                        cache: true,
+                        sessionId: sessionId || undefined
+                    });
                     await player.loadVideo(singleData.youtube_id);
                 } catch (e) {
                     console.error("TubePlayer failed to initialize/load", e);

@@ -12,6 +12,7 @@ import type { UserResponse } from "./types";
 
 export function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"dashboard" | "collections" | "youtube">("dashboard");
   const location = useLocation();
@@ -34,7 +35,7 @@ export function App() {
       .then((data) => {
         if (data) {
           setUser(data.user);
-          localStorage.setItem('tube-ts-session-id', data.id);
+          setSessionId(data.id);
         }
         setLoading(false);
       })
@@ -47,8 +48,8 @@ export function App() {
   const handleLogout = async () => {
     try {
       await fetch("/auth/logout", { method: "POST" });
-      localStorage.removeItem('tube-ts-session-id');
       setUser(null);
+      setSessionId(null);
       window.location.href = "/";
     } catch (err) {
       console.error("Logout failed:", err);
@@ -113,7 +114,7 @@ export function App() {
             ) : activeTab === "collections" ? (
                 <CollectionsManager user={user} />
             ) : (
-                <YoutubeViewer />
+                <YoutubeViewer sessionId={sessionId} />
             )
         } />
       </Routes>
