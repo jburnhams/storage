@@ -67,7 +67,7 @@ export async function bundleWorker(): Promise<string> {
 
     writeFileSync(assetsPath, `
 export const FRONTEND_HTML = "<html><body>Dummy Frontend for Testing</body></html>";
-export const FRONTEND_ASSETS = {};
+export const ASSETS = new Map();
     `.trim());
   }
 
