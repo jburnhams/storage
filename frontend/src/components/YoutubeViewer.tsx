@@ -488,7 +488,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                             <input
                                 type="number"
                                 min={1}
-                                max={totalPages}
+                                max={totalPages > 0 ? totalPages : 1}
                                 value={currentPage}
                                 onChange={(e) => {
                                     const page = parseInt(e.target.value);
