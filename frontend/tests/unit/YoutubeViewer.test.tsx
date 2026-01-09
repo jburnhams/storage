@@ -304,7 +304,9 @@ describe('YoutubeViewer', () => {
         // Since TubePlayer is mocked globally in setup.ts, we need to access the mock.
         // vi.mocked helper can be used if we imported it, or just inspect the calls on the imported mock.
 
-        expect(TubePlayer).toHaveBeenCalled();
+        await waitFor(() => {
+            expect(TubePlayer).toHaveBeenCalled();
+        });
         const mockInstance = (TubePlayer as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
 
         // Wait for initialize to be called
