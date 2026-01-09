@@ -194,7 +194,7 @@ export class YoutubeService {
       custom_url: item.snippet.customUrl || null,
       thumbnail_url: bestThumb?.url || '',
       published_at: item.snippet.publishedAt,
-      // statistics: statisticsJson, // Removed
+      // statistics: statisticsJson, // Removed from object, still used for DB
       raw_json: JSON.stringify(item),
       created_at: now,
       updated_at: now,
@@ -291,7 +291,7 @@ export class YoutubeService {
       channel_id: item.snippet.channelId,
       thumbnail_url: bestThumb?.url || '',
       duration: item.contentDetails.duration,
-      // statistics: statisticsJson, // Removed
+      // statistics: statisticsJson, // Removed from object, still used for DB
       raw_json: JSON.stringify(item),
       created_at: now,
       updated_at: now,
@@ -492,7 +492,7 @@ export class YoutubeService {
                         channel_id: item.snippet.channelId,
                         thumbnail_url: bestThumb?.url || '',
                         duration: item.contentDetails.duration,
-                        // statistics: statisticsJson, // Removed
+                        // statistics: statisticsJson, // Removed from object, still used for DB
                         raw_json: JSON.stringify(item),
                         created_at: nowIso,
                         updated_at: nowIso,
