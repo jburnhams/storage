@@ -22,10 +22,12 @@ describe('YoutubeViewer', () => {
         channel_id: 'chan1',
         thumbnail_url: 'thumb.jpg',
         duration: '10:00',
-        statistics: JSON.stringify({ viewCount: 1000 }),
         raw_json: '{}',
         created_at: '2023-01-01',
-        updated_at: '2023-01-01'
+        updated_at: '2023-01-01',
+        view_count: 1000,
+        like_count: 100,
+        comment_count: 50
     };
 
     const mockChannels = {
@@ -149,8 +151,10 @@ describe('YoutubeViewer', () => {
              custom_url: '@mychan',
              thumbnail_url: 'thumb',
              published_at: '2020-01-01',
-             statistics: JSON.stringify({ videoCount: 10 }),
-             raw_json: '{}'
+             raw_json: '{}',
+             video_count: 10,
+             subscriber_count: 1000,
+             view_count: 50000
          };
 
          // Mock responses
@@ -235,7 +239,7 @@ describe('YoutubeViewer', () => {
             const calls = globalFetch.mock.calls.filter(c => c[0].toString().includes('/videos'));
             const lastCall = calls[calls.length - 1];
             const url = new URL(lastCall[0], 'http://localhost');
-            expect(url.searchParams.get('sort_by')).toBe('statistics.viewCount');
+            expect(url.searchParams.get('sort_by')).toBe('view_count');
         });
     });
 

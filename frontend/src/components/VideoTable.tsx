@@ -29,7 +29,7 @@ export function VideoTable({
     const headers = [
         { label: 'Title', key: 'title' },
         { label: 'Published', key: 'published_at' },
-        { label: 'Views', key: 'statistics.viewCount' }, // Keeping the key string for now, caller handles logic
+        { label: 'Views', key: 'view_count' },
     ];
 
     if (showChannelColumn) {
@@ -60,13 +60,9 @@ export function VideoTable({
                 </thead>
                 <tbody>
                     {videos.map(video => {
-                        let views = 'N/A';
-                        try {
-                            // Handle both raw string statistics and parsed object (if pre-parsed)
-                            // But type says string.
-                            const stats = typeof video.statistics === 'string' ? JSON.parse(video.statistics) : video.statistics;
-                            views = stats.viewCount || 'N/A';
-                        } catch (e) {}
+                        const views = video.view_count !== undefined && video.view_count !== null
+                            ? video.view_count.toLocaleString()
+                            : 'N/A';
 
                         return (
                             <tr key={video.youtube_id} style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-bg)' }}>
@@ -88,7 +84,7 @@ export function VideoTable({
                                     <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)' }}>{video.duration}</div>
                                 </td>
                                 <td style={{ padding: '0.75rem' }}>{new Date(video.published_at).toLocaleDateString()}</td>
-                                <td style={{ padding: '0.75rem' }}>{parseInt(views).toLocaleString()}</td>
+                                <td style={{ padding: '0.75rem' }}>{views}</td>
                                 {showChannelColumn && (
                                     <td style={{ padding: '0.75rem' }}>
                                         <button

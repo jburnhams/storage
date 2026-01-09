@@ -334,7 +334,24 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
     const renderSingleResult = () => {
         if (!singleData) return null;
         const isChannel = 'custom_url' in singleData;
-        const stats = JSON.parse(singleData.statistics);
+
+        let statsDisplay: { label: string, value: string }[] = [];
+
+        if (isChannel) {
+            const channel = singleData as YoutubeChannel;
+            statsDisplay = [
+                { label: 'Subscribers', value: channel.subscriber_count?.toLocaleString() || 'N/A' },
+                { label: 'Videos', value: channel.video_count?.toLocaleString() || 'N/A' },
+                { label: 'Views', value: channel.view_count?.toLocaleString() || 'N/A' }
+            ];
+        } else {
+            const video = singleData as YoutubeVideo;
+            statsDisplay = [
+                { label: 'Views', value: video.view_count?.toLocaleString() || 'N/A' },
+                { label: 'Likes', value: video.like_count?.toLocaleString() || 'N/A' },
+                { label: 'Comments', value: video.comment_count?.toLocaleString() || 'N/A' }
+            ];
+        }
 
         return (
             <div className="youtube-result" style={{ marginTop: '2rem' }}>
@@ -381,10 +398,10 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                             • {new Date(singleData.published_at).toLocaleDateString()}
                         </div>
                         <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                            {Object.entries(stats).map(([key, value]) => (
-                                <div key={key} style={{ background: 'var(--color-bg)', padding: '0.5rem', borderRadius: '4px' }}>
-                                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)', textTransform: 'capitalize' }}>{key.replace(/([A-Z])/g, ' $1').trim()}</div>
-                                    <div style={{ fontWeight: 'bold' }}>{String(value)}</div>
+                            {statsDisplay.map(({ label, value }) => (
+                                <div key={label} style={{ background: 'var(--color-bg)', padding: '0.5rem', borderRadius: '4px' }}>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-dim)', textTransform: 'capitalize' }}>{label}</div>
+                                    <div style={{ fontWeight: 'bold' }}>{value}</div>
                                 </div>
                             ))}
                         </div>

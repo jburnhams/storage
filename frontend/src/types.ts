@@ -57,11 +57,14 @@ export interface YoutubeChannel {
   custom_url: string | null;
   thumbnail_url: string;
   published_at: string;
-  statistics: string; // JSON string
   raw_json: string; // JSON string
   created_at: string;
   updated_at: string;
-  sync_start_date?: string | null; // Added based on usage in YoutubeViewer.tsx
+  sync_start_date?: string | null;
+  view_count?: number | null;
+  subscriber_count?: number | null;
+  video_count?: number | null;
+  country?: string | null;
 }
 
 export interface YoutubeVideo {
@@ -73,10 +76,13 @@ export interface YoutubeVideo {
   channel_title?: string;
   thumbnail_url: string;
   duration: string;
-  statistics: string; // JSON string
   raw_json: string; // JSON string
   created_at: string;
   updated_at: string;
+  view_count?: number | null;
+  like_count?: number | null;
+  comment_count?: number | null;
+  duration_seconds?: number | null;
 }
 
 export interface YoutubeSyncResponse {
