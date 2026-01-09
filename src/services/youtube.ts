@@ -121,8 +121,12 @@ export class YoutubeService {
         if (listRes.items && listRes.items.length > 0) {
             return listRes.items[0].id;
         }
-    } catch (e) {
-        console.error("Error resolving handle:", e);
+    } catch (e: any) {
+        const msg = e.message || '';
+        // Only log unexpected errors, silence expected 404s
+        if (!msg.includes('404') && !msg.includes('Not Found')) {
+            console.error("Error resolving handle:", e);
+        }
     }
     throw new Error(`Channel not found for: ${input}`);
   }
