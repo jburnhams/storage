@@ -24,7 +24,7 @@ export function App() {
         return;
     }
 
-    fetch("/api/user")
+    fetch("/api/session")
       .then((res) => {
         if (res.ok) {
           return res.json();
@@ -33,12 +33,13 @@ export function App() {
       })
       .then((data) => {
         if (data) {
-          setUser(data);
+          setUser(data.user);
+          localStorage.setItem('tube-ts-session-id', data.id);
         }
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Failed to fetch user:", err);
+        console.error("Failed to fetch session:", err);
         setLoading(false);
       });
   }, [location.pathname]);
@@ -46,6 +47,7 @@ export function App() {
   const handleLogout = async () => {
     try {
       await fetch("/auth/logout", { method: "POST" });
+      localStorage.removeItem('tube-ts-session-id');
       setUser(null);
       window.location.href = "/";
     } catch (err) {

@@ -77,6 +77,7 @@ describe("App", () => {
       created_at: new Date().toISOString(),
       expires_at: new Date().toISOString(),
       last_used_at: new Date().toISOString(),
+      user: mockUser,
     };
 
     // Need to mock fetch calls made by dashboard too if any?

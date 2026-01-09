@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { YoutubeChannel, YoutubeVideo, YoutubeSyncResponse } from '../types';
 import { VideoTable } from './VideoTable';
+import { TubePlayer } from '@jburnhams/tube-ts';
 
 interface SearchResult {
     videos: YoutubeVideo[];
@@ -40,6 +41,45 @@ export function YoutubeViewer() {
     const [syncProgress, setSyncProgress] = useState<YoutubeSyncResponse | null>(null);
     const [syncRange, setSyncRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
     const [totalFetched, setTotalFetched] = useState(0);
+
+    // Player State
+    const playerRef = useRef<HTMLDivElement>(null);
+    const playerInstance = useRef<TubePlayer | null>(null);
+
+    useEffect(() => {
+        const isChannel = singleData && 'custom_url' in singleData;
+
+        if (singleData && !isChannel && playerRef.current) {
+            const initPlayer = async () => {
+                try {
+                    if (playerInstance.current) {
+                       playerInstance.current.destroy();
+                    }
+
+                    // Ensure we have a unique ID for the container if not present
+                    if (!playerRef.current?.id) {
+                        playerRef.current!.id = `tube-player-${singleData.youtube_id}`;
+                    }
+
+                    const player = new TubePlayer(playerRef.current!.id);
+                    playerInstance.current = player;
+
+                    await player.initialize({ cache: true });
+                    await player.loadVideo(singleData.youtube_id);
+                } catch (e) {
+                    console.error("TubePlayer failed to initialize/load", e);
+                }
+            };
+            initPlayer();
+
+            return () => {
+                if (playerInstance.current) {
+                    playerInstance.current.destroy();
+                    playerInstance.current = null;
+                }
+            };
+        }
+    }, [singleData]);
 
     const fetchChannelDetail = async (channelId: string) => {
         setLoading(true);
@@ -288,10 +328,24 @@ export function YoutubeViewer() {
         if (!singleData) return null;
         const isChannel = 'custom_url' in singleData;
         const stats = JSON.parse(singleData.statistics);
+
         return (
             <div className="youtube-result" style={{ marginTop: '2rem' }}>
                 <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
-                    <img src={singleData.thumbnail_url} alt={singleData.title} style={{ width: '200px', borderRadius: '8px' }} />
+                    {isChannel ? (
+                        <img src={singleData.thumbnail_url} alt={singleData.title} style={{ width: '200px', borderRadius: '8px' }} />
+                    ) : (
+                        <div
+                            ref={playerRef}
+                            style={{
+                                width: '400px',
+                                height: '225px',
+                                background: '#000',
+                                borderRadius: '8px',
+                                overflow: 'hidden'
+                            }}
+                        />
+                    )}
                     <div>
                         <h2 style={{ marginBottom: '0.5rem' }}>{singleData.title}</h2>
                         <div style={{ color: 'var(--color-text-dim)', marginBottom: '1rem' }}>
