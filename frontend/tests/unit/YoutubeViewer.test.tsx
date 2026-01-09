@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { YoutubeViewer } from '../../src/components/YoutubeViewer';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { YoutubeChannel } from '../../src/types';
+import { TubePlayer } from '@jburnhams/tube-ts';
 
 // Mock fetch
 const globalFetch = vi.fn();
@@ -280,6 +281,38 @@ describe('YoutubeViewer', () => {
             const lastCall = calls[calls.length - 1];
             const url = new URL(lastCall[0], 'http://localhost');
             expect(url.searchParams.get('offset')).toBe('10');
+        });
+    });
+
+    it('initializes player with sessionId when provided', async () => {
+        globalFetch.mockResolvedValue({
+            ok: true,
+            json: async () => mockVideo
+        });
+
+        const sessionId = "test-session-id";
+        render(<YoutubeViewer sessionId={sessionId} />);
+
+        // Enter ID and fetch
+        const idInput = screen.getByPlaceholderText('Video ID');
+        fireEvent.change(idInput, { target: { value: 'vid1' } });
+        fireEvent.click(screen.getByText('Fetch'));
+
+        await waitFor(() => screen.getByText('Test Video'));
+
+        // Check if TubePlayer was initialized
+        // Since TubePlayer is mocked globally in setup.ts, we need to access the mock.
+        // vi.mocked helper can be used if we imported it, or just inspect the calls on the imported mock.
+
+        expect(TubePlayer).toHaveBeenCalled();
+        const mockInstance = (TubePlayer as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+        // Wait for initialize to be called
+        await waitFor(() => {
+            expect(mockInstance.initialize).toHaveBeenCalledWith({
+                cache: true,
+                sessionId: sessionId
+            });
         });
     });
 });

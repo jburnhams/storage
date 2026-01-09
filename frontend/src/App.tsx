@@ -12,6 +12,7 @@ import type { UserResponse } from "./types";
 
 export function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"dashboard" | "collections" | "youtube">("dashboard");
   const location = useLocation();
@@ -24,7 +25,7 @@ export function App() {
         return;
     }
 
-    fetch("/api/user")
+    fetch("/api/session")
       .then((res) => {
         if (res.ok) {
           return res.json();
@@ -33,12 +34,13 @@ export function App() {
       })
       .then((data) => {
         if (data) {
-          setUser(data);
+          setUser(data.user);
+          setSessionId(data.id);
         }
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Failed to fetch user:", err);
+        console.error("Failed to fetch session:", err);
         setLoading(false);
       });
   }, [location.pathname]);
@@ -47,6 +49,7 @@ export function App() {
     try {
       await fetch("/auth/logout", { method: "POST" });
       setUser(null);
+      setSessionId(null);
       window.location.href = "/";
     } catch (err) {
       console.error("Logout failed:", err);
@@ -111,7 +114,7 @@ export function App() {
             ) : activeTab === "collections" ? (
                 <CollectionsManager user={user} />
             ) : (
-                <YoutubeViewer />
+                <YoutubeViewer sessionId={sessionId} />
             )
         } />
       </Routes>
