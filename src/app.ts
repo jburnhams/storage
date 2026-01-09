@@ -10,7 +10,7 @@ import { registerEntryJsonRoutes } from './routes/entries_json';
 import { registerCollectionRoutes } from './routes/collections';
 import { registerBulkRoutes, registerPublicRoutes } from './routes/bulk';
 import { registerYoutubeRoutes } from './routes/youtube';
-import { renderFrontend } from './frontend';
+import { renderFrontend, serveAsset } from './frontend';
 import { backfillYoutubeData } from './utils/backfill_youtube';
 
 // Create OpenAPI-enabled Hono app
@@ -77,6 +77,12 @@ export function createApp() {
   // Health check
   app.get('/health', (c) => c.text('ok'));
 
+  // Frontend Assets
+  app.get('/assets/*', (c) => {
+    const path = new URL(c.req.url).pathname;
+    return serveAsset(path);
+  });
+
   // Frontend fallback for client-side routing
   app.get('*', (c) => {
     const accept = c.req.header('Accept');
@@ -87,8 +93,9 @@ export function createApp() {
     const isIndexHtml = path === '/index.html';
     const wantsHtml = accept?.includes('text/html');
     const isApiRoute = path.startsWith('/api/') || path.startsWith('/auth/');
+    const isAsset = path.startsWith('/assets/');
 
-    if ((isRootPath || isIndexHtml || wantsHtml) && !isApiRoute) {
+    if ((isRootPath || isIndexHtml || wantsHtml) && !isApiRoute && !isAsset) {
       return renderFrontend();
     }
 
