@@ -232,6 +232,7 @@ export const GetRandomVideosQuerySchema = z.object({
   count: z.string().optional().default('20').transform((val) => parseInt(val, 10)),
   min_duration: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
   max_duration: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined),
+  channel_id: z.string().optional(),
 });
 
 export const RandomVideoSchema = z.object({

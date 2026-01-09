@@ -104,6 +104,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
         const count = query.count || 20;
         const minDuration = query.min_duration;
         const maxDuration = query.max_duration;
+        const channelId = query.channel_id;
 
         const conditions: string[] = [];
         const params: any[] = [];
@@ -116,6 +117,11 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
         if (maxDuration !== undefined) {
           conditions.push('v.duration_seconds <= ?');
           params.push(maxDuration);
+        }
+
+        if (channelId) {
+          conditions.push('v.channel_id = ?');
+          params.push(channelId);
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
