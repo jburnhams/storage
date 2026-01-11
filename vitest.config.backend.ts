@@ -21,7 +21,7 @@ export default defineWorkersConfig(async () => {
             enabled: true,
           },
         },
-        inline: ["jszip"],
+        inline: ["jszip", "miniflare"],
       },
       globals: true,
       include: ["tests/unit/**/*.test.ts"],

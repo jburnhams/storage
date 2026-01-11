@@ -444,9 +444,61 @@ export function registerUserRoutes(app: AppType) {
 
   // POST /api/users
   app.openapi(createUserRoute, async (c) => {
-    const body = c.req.valid('json');
     try {
-      const user = await createUser(body, c.env);
+      const contentType = c.req.header('content-type') || '';
+      let body: any;
+      let blob: ArrayBuffer | undefined = undefined;
+
+      // Handle multipart manually within OpenAPI handler (bypassing validation for body if needed, or we rely on catch)
+      // Actually, c.req.valid('json') will fail for multipart.
+      // We must check Content-Type first.
+
+      if (contentType.includes('multipart/form-data')) {
+        const formData = await c.req.parseBody();
+        const file = formData['profile_pic_blob'];
+
+        body = {
+          email: formData['email'],
+          name: formData['name'],
+          is_admin: formData['is_admin'] === 'true',
+          profile_picture: formData['profile_picture'] ? String(formData['profile_picture']) : undefined,
+        };
+
+        if (file) {
+          if (typeof file === 'string') {
+             // Handle binary data passed as string (Miniflare/workerd quirk)
+             if (file.includes(',') && /^[\d\s,]+$/.test(file)) {
+                 const bytes = file.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+                 blob = new Uint8Array(bytes).buffer;
+             } else {
+                 const buf = new Uint8Array(file.length);
+                 for (let i = 0; i < file.length; i++) buf[i] = file.charCodeAt(i);
+                 blob = buf.buffer;
+             }
+          } else if (file instanceof File) {
+             blob = await file.arrayBuffer();
+          } else if (typeof (file as any).arrayBuffer === 'function') {
+             blob = await (file as any).arrayBuffer();
+          }
+        }
+      } else {
+        // Use validation for JSON
+        body = c.req.valid('json');
+      }
+
+      // Manual validation fallback for multipart
+      if (!body.email || !body.name) {
+        return c.json({ error: 'BAD_REQUEST', message: 'Missing email or name' }, 400);
+      }
+
+      const user = await createUser({ ...body, profile_pic_blob: blob }, c.env);
+
+      // If we uploaded a blob, update the profile_picture URL to point to it
+      if (blob) {
+         await updateUser(user.id, { profile_picture: `/api/users/${user.id}/avatar` }, c.env);
+         user.profile_picture = `/api/users/${user.id}/avatar`;
+      }
+
       return c.json(userToResponse(user), 201);
     } catch (error) {
       return c.json(
@@ -462,10 +514,52 @@ export function registerUserRoutes(app: AppType) {
   // PUT /api/users/:id
   app.openapi(updateUserRoute, async (c) => {
     const { id } = c.req.valid('param');
-    const body = c.req.valid('json');
 
     try {
-      const user = await updateUser(id, body, c.env);
+      const contentType = c.req.header('content-type') || '';
+      let body: any;
+      let blob: ArrayBuffer | undefined = undefined;
+
+      if (contentType.includes('multipart/form-data')) {
+        const formData = await c.req.parseBody();
+        const file = formData['profile_pic_blob'];
+
+        body = {
+          name: formData['name'],
+          email: formData['email'],
+          is_admin: formData['is_admin'] === 'true', // check if string 'true'
+          profile_picture: formData['profile_picture'] ? String(formData['profile_picture']) : undefined,
+        };
+
+        if (formData['is_admin'] === undefined) delete body.is_admin;
+        if (formData['name'] === undefined) delete body.name;
+        if (formData['email'] === undefined) delete body.email;
+
+        if (file) {
+          if (typeof file === 'string') {
+             if (file.includes(',') && /^[\d\s,]+$/.test(file)) {
+                 const bytes = file.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+                 blob = new Uint8Array(bytes).buffer;
+             } else {
+                 const buf = new Uint8Array(file.length);
+                 for (let i = 0; i < file.length; i++) buf[i] = file.charCodeAt(i);
+                 blob = buf.buffer;
+             }
+          } else if (file instanceof File) {
+             blob = await file.arrayBuffer();
+          } else if (typeof (file as any).arrayBuffer === 'function') {
+             blob = await (file as any).arrayBuffer();
+          }
+
+          if (blob) {
+            body.profile_picture = `/api/users/${id}/avatar`;
+          }
+        }
+      } else {
+        body = c.req.valid('json');
+      }
+
+      const user = await updateUser(id, { ...body, profile_pic_blob: blob }, c.env);
       if (!user) {
         return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
       }
@@ -479,6 +573,33 @@ export function registerUserRoutes(app: AppType) {
         400
       );
     }
+  });
+
+  // GET /api/users/:id/avatar
+  app.get('/api/users/:id/avatar', requireAuth, async (c) => {
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.text('Invalid ID', 400);
+
+    const user = await getUserById(id, c.env);
+    if (!user || !user.profile_pic_blob) {
+      // Return 404 or a default avatar? 404 is cleaner.
+      // Or redirect to profile_picture if it's a URL?
+      if (user && user.profile_picture && !user.profile_picture.startsWith('/api/')) {
+         return c.redirect(user.profile_picture);
+      }
+      return c.text('Not found', 404);
+    }
+
+    // Since we store as BLOB (ArrayBuffer in D1 types), we cast it
+    // SQLite BLOBs come out as ArrayBuffer in Cloudflare D1
+    const blob = user.profile_pic_blob as ArrayBuffer;
+
+    return new Response(blob, {
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'Cache-Control': 'public, max-age=86400', // Cache for 1 day
+      },
+    });
   });
 
   // DELETE /api/users/:id

@@ -24,10 +24,62 @@ export function UsersTab({ user }: UsersTabProps) {
     is_admin: false,
     profile_picture: "",
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const resizeImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_SIZE = 1500;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Failed to get canvas context"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const resizedFile = new File([blob], file.name, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(resizedFile);
+            } else {
+              reject(new Error("Canvas to Blob failed"));
+            }
+          },
+          "image/jpeg",
+          0.8
+        );
+      };
+      img.onerror = (err) => reject(err);
+    });
+  };
 
   const fetchUsers = async () => {
     try {
@@ -47,6 +99,7 @@ export function UsersTab({ user }: UsersTabProps) {
 
   const handleCreate = () => {
     setEditingUser(null);
+    setSelectedFile(null);
     setFormData({
       name: "",
       email: "",
@@ -59,6 +112,7 @@ export function UsersTab({ user }: UsersTabProps) {
 
   const handleEdit = (user: UserResponse) => {
     setEditingUser(user);
+    setSelectedFile(null);
     setFormData({
       name: user.name,
       email: user.email,
@@ -93,12 +147,30 @@ export function UsersTab({ user }: UsersTabProps) {
       const url = editingUser ? `/api/users/${editingUser.id}` : "/api/users";
       const method = editingUser ? "PUT" : "POST";
 
+      let body;
+      const headers: Record<string, string> = {};
+
+      if (selectedFile) {
+        const resizedFile = await resizeImage(selectedFile);
+        const formDataObj = new FormData();
+        formDataObj.append("name", formData.name);
+        formDataObj.append("email", formData.email);
+        formDataObj.append("is_admin", String(formData.is_admin));
+        if (formData.profile_picture) {
+          formDataObj.append("profile_picture", formData.profile_picture);
+        }
+        formDataObj.append("profile_pic_blob", resizedFile);
+        body = formDataObj;
+        // Do not set Content-Type header, let browser set it with boundary
+      } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(formData);
+      }
+
       const res = await fetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+        headers,
+        body,
       });
 
       if (!res.ok) {
@@ -215,11 +287,24 @@ export function UsersTab({ user }: UsersTabProps) {
                 />
               </div>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Profile Picture URL</label>
+                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Profile Picture</label>
+                <div style={{ marginBottom: '0.5rem' }}>
+                   <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setSelectedFile(e.target.files[0]);
+                      }
+                    }}
+                   />
+                </div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9em', color: '#666' }}>Or URL:</label>
                 <input
                   type="text"
                   value={formData.profile_picture}
                   onChange={(e) => setFormData({ ...formData, profile_picture: e.target.value })}
+                  placeholder="https://..."
                   style={{ width: '100%', padding: '0.5rem' }}
                 />
               </div>

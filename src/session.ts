@@ -258,6 +258,10 @@ export async function updateUser(
     fields.push("profile_picture = ?");
     values.push(updates.profile_picture);
   }
+  if (updates.profile_pic_blob !== undefined) {
+    fields.push("profile_pic_blob = ?");
+    values.push(updates.profile_pic_blob);
+  }
 
   if (fields.length === 0) {
     return user;
@@ -308,13 +312,19 @@ export async function createUser(
   const isAdmin = userType === 'ADMIN' ? 1 : 0;
 
   const profilePicture = request.profile_picture || null;
+  const profilePicBlob = request.profile_pic_blob || null;
 
   const result = await env.DB.prepare(
-    `INSERT INTO users (email, name, profile_picture, user_type, is_admin, created_at, updated_at, last_login_at)
+    `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, is_admin, created_at, updated_at, last_login_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(request.email, request.name, profilePicture, userType, isAdmin, now, now, null)
+    .bind(request.email, request.name, profilePicture, profilePicBlob, isAdmin, now, now, null)
+    `INSERT INTO users (email, name, profile_picture, is_admin, created_at, updated_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING *`
+  )
+    .bind(request.email, request.name, profilePicture, profilePicBlob, userType, isAdmin, now, now, null)
     .first<User>();
 
   if (!result) {
