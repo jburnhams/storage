@@ -39,6 +39,7 @@ export const PromoteAdminRequestSchema = z.object({
 export const UpdateUserRequestSchema = z.object({
   name: z.string().optional(),
   email: z.string().email().optional(),
+  password: z.string().min(8).optional(),
   user_type: UserTypeSchema.optional(),
   is_admin: z.boolean().optional(),
   profile_picture: z.string().optional(),
@@ -49,6 +50,7 @@ export const UpdateUserRequestSchema = z.object({
 export const CreateUserRequestSchema = z.object({
   email: z.string().email(),
   name: z.string(),
+  password: z.string().min(8).optional(),
   user_type: UserTypeSchema.optional(),
   is_admin: z.boolean().default(false), // Legacy support
   profile_picture: z.string().optional(),
@@ -199,6 +201,11 @@ export const AuthLoginQuerySchema = z.object({
   redirect: z.string().optional(),
 });
 
+export const AuthLoginBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
 // ===== Path Parameter Schemas =====
 
 export const IdParamSchema = z.object({
@@ -248,6 +255,7 @@ export type BulkExportRequest = z.infer<typeof BulkExportRequestSchema>;
 export type BulkDeleteRequest = z.infer<typeof BulkDeleteRequestSchema>;
 export type AuthCallbackQuery = z.infer<typeof AuthCallbackQuerySchema>;
 export type AuthLoginQuery = z.infer<typeof AuthLoginQuerySchema>;
+export type AuthLoginBody = z.infer<typeof AuthLoginBodySchema>;
 
 // ===== Random Video Schemas =====
 
