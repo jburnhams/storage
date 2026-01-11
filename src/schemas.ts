@@ -33,6 +33,20 @@ export const PromoteAdminRequestSchema = z.object({
   email: z.string().email(),
 });
 
+export const UpdateUserRequestSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().email().optional(),
+  is_admin: z.boolean().optional(),
+  profile_picture: z.string().optional(),
+});
+
+export const CreateUserRequestSchema = z.object({
+  email: z.string().email(),
+  name: z.string(),
+  is_admin: z.boolean().default(false),
+  profile_picture: z.string().optional(),
+});
+
 // ===== Collection Schemas =====
 
 export const CollectionContentEntrySchema = z.discriminatedUnion('type', [
@@ -215,6 +229,8 @@ export type UpdateEntryRequest = z.infer<typeof UpdateEntryRequestSchema>;
 export type CreateCollectionRequest = z.infer<typeof CreateCollectionRequestSchema>;
 export type UpdateCollectionRequest = z.infer<typeof UpdateCollectionRequestSchema>;
 export type PromoteAdminRequest = z.infer<typeof PromoteAdminRequestSchema>;
+export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
+export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
 export type ListEntriesQuery = z.infer<typeof ListEntriesQuerySchema>;
 export type GetCollectionQuery = z.infer<typeof GetCollectionQuerySchema>;
 export type GetEntryQuery = z.infer<typeof GetEntryQuerySchema>;

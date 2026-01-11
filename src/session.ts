@@ -1,4 +1,5 @@
 import type { Env, Session, User, UserResponse, SessionResponse } from "./types";
+import type { UpdateUserRequest, CreateUserRequest } from "./schemas";
 
 const SESSION_DURATION_DAYS = 7;
 const SESSION_DURATION_MS = SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000;
@@ -207,6 +208,99 @@ export async function promoteUserToAdmin(
   )
     .bind(now, email)
     .run();
+}
+
+/**
+ * Update user details
+ */
+export async function updateUser(
+  userId: number,
+  updates: UpdateUserRequest,
+  env: Env
+): Promise<User | null> {
+  const user = await getUserById(userId, env);
+  if (!user) {
+    return null;
+  }
+
+  const fields: string[] = [];
+  const values: any[] = [];
+  const now = new Date().toISOString();
+
+  if (updates.name !== undefined) {
+    fields.push("name = ?");
+    values.push(updates.name);
+  }
+  if (updates.email !== undefined) {
+    fields.push("email = ?");
+    values.push(updates.email);
+  }
+  if (updates.is_admin !== undefined) {
+    fields.push("is_admin = ?");
+    values.push(updates.is_admin ? 1 : 0);
+  }
+  if (updates.profile_picture !== undefined) {
+    fields.push("profile_picture = ?");
+    values.push(updates.profile_picture);
+  }
+
+  if (fields.length === 0) {
+    return user;
+  }
+
+  fields.push("updated_at = ?");
+  values.push(now);
+
+  values.push(userId);
+
+  const query = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
+  await env.DB.prepare(query).bind(...values).run();
+
+  return await getUserById(userId, env);
+}
+
+/**
+ * Delete user and associated data
+ */
+export async function deleteUser(
+  userId: number,
+  env: Env
+): Promise<void> {
+  // Due to ON DELETE CASCADE constraints, this should remove sessions, entries, collections
+  await env.DB.prepare(`DELETE FROM users WHERE id = ?`)
+    .bind(userId)
+    .run();
+}
+
+/**
+ * Create a new user manually (e.g. by admin)
+ */
+export async function createUser(
+  request: CreateUserRequest,
+  env: Env
+): Promise<User> {
+  const existingUser = await getUserByEmail(request.email, env);
+  if (existingUser) {
+    throw new Error('User with this email already exists');
+  }
+
+  const now = new Date().toISOString();
+  const isAdmin = request.is_admin ? 1 : 0;
+  const profilePicture = request.profile_picture || null;
+
+  const result = await env.DB.prepare(
+    `INSERT INTO users (email, name, profile_picture, is_admin, created_at, updated_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     RETURNING *`
+  )
+    .bind(request.email, request.name, profilePicture, isAdmin, now, now, null)
+    .first<User>();
+
+  if (!result) {
+    throw new Error("Failed to create user");
+  }
+
+  return result;
 }
 
 /**

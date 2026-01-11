@@ -8,13 +8,14 @@ import { StorageExplorer } from "./components/StorageExplorer";
 import { PublicShareView } from "./components/PublicShareView";
 import { CollectionsManager } from "./components/CollectionsManager";
 import { YoutubeViewer } from "./components/YoutubeViewer";
+import { UsersTab } from "./components/UsersTab";
 import type { UserResponse } from "./types";
 
 export function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "collections" | "youtube">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "collections" | "youtube" | "users">("dashboard");
   const location = useLocation();
 
   useEffect(() => {
@@ -100,6 +101,9 @@ export function App() {
           <button onClick={() => setActiveTab("dashboard")} disabled={activeTab === "dashboard"}>Explorer</button>
           <button onClick={() => setActiveTab("collections")} disabled={activeTab === "collections"}>Collections</button>
           <button onClick={() => setActiveTab("youtube")} disabled={activeTab === "youtube"}>YouTube</button>
+          {user.is_admin && (
+            <button onClick={() => setActiveTab("users")} disabled={activeTab === "users"}>Users</button>
+          )}
       </div>
 
       <Routes>
@@ -113,8 +117,10 @@ export function App() {
                 </>
             ) : activeTab === "collections" ? (
                 <CollectionsManager user={user} />
-            ) : (
+            ) : activeTab === "youtube" ? (
                 <YoutubeViewer sessionId={sessionId} />
+            ) : (
+                <UsersTab user={user} />
             )
         } />
       </Routes>
