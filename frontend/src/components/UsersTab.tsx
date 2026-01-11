@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { UserResponse } from "../types";
+import type { UserResponse, UserType } from "../types";
 
 interface UsersTabProps {
   user: UserResponse;
@@ -11,9 +11,16 @@ export function UsersTab({ user }: UsersTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    email: string;
+    user_type: UserType;
+    is_admin: boolean;
+    profile_picture: string;
+  }>({
     name: "",
     email: "",
+    user_type: 'STANDARD',
     is_admin: false,
     profile_picture: "",
   });
@@ -96,6 +103,7 @@ export function UsersTab({ user }: UsersTabProps) {
     setFormData({
       name: "",
       email: "",
+      user_type: 'STANDARD',
       is_admin: false,
       profile_picture: "",
     });
@@ -108,6 +116,7 @@ export function UsersTab({ user }: UsersTabProps) {
     setFormData({
       name: user.name,
       email: user.email,
+      user_type: user.user_type || 'STANDARD',
       is_admin: user.is_admin,
       profile_picture: user.profile_picture || "",
     });
@@ -226,10 +235,12 @@ export function UsersTab({ user }: UsersTabProps) {
                 </div>
               </td>
               <td style={{ padding: '0.5rem' }}>
-                {u.is_admin ? (
+                {u.user_type === 'ADMIN' ? (
                   <span style={{ background: '#e0f2f1', color: '#00695c', padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>Admin</span>
+                ) : u.user_type === 'GUEST' ? (
+                  <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>Guest</span>
                 ) : (
-                  <span style={{ background: '#f5f5f5', color: '#616161', padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>User</span>
+                  <span style={{ background: '#f5f5f5', color: '#616161', padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>Standard</span>
                 )}
               </td>
               <td style={{ padding: '0.5rem' }}>{new Date(u.created_at).toLocaleDateString()}</td>
@@ -298,14 +309,16 @@ export function UsersTab({ user }: UsersTabProps) {
                 />
               </div>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.is_admin}
-                    onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
-                  />
-                  Is Admin
-                </label>
+                <label style={{ display: 'block', marginBottom: '0.5rem' }}>User Type</label>
+                <select
+                  value={formData.user_type}
+                  onChange={(e) => setFormData({ ...formData, user_type: e.target.value as UserType })}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option value="GUEST">Guest</option>
+                  <option value="STANDARD">Standard</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)}>Cancel</button>

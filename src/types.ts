@@ -1,11 +1,14 @@
 // ===== Database Models =====
 
+export type UserType = 'GUEST' | 'STANDARD' | 'ADMIN';
+
 export interface User {
   id: number;
   email: string;
   name: string;
   profile_picture: string | null;
   profile_pic_blob?: unknown | null;
+  user_type: UserType;
   is_admin: number; // SQLite uses INTEGER for boolean (0 or 1)
   created_at: string;
   updated_at: string;
@@ -73,6 +76,7 @@ export interface UserResponse {
   email: string;
   name: string;
   profile_picture: string | null;
+  user_type: UserType;
   is_admin: boolean;
   created_at: string;
   updated_at: string;

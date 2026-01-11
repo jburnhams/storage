@@ -9,11 +9,14 @@ export const ErrorResponseSchema = z.object({
 
 // ===== User & Session Schemas =====
 
+const UserTypeSchema = z.enum(['GUEST', 'STANDARD', 'ADMIN']);
+
 export const UserResponseSchema = z.object({
   id: z.number(),
   email: z.string().email(),
   name: z.string(),
   profile_picture: z.string().nullable(),
+  user_type: UserTypeSchema,
   is_admin: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -36,6 +39,7 @@ export const PromoteAdminRequestSchema = z.object({
 export const UpdateUserRequestSchema = z.object({
   name: z.string().optional(),
   email: z.string().email().optional(),
+  user_type: UserTypeSchema.optional(),
   is_admin: z.boolean().optional(),
   profile_picture: z.string().optional(),
   // For multipart, this is handled outside schema validation usually,
@@ -45,7 +49,8 @@ export const UpdateUserRequestSchema = z.object({
 export const CreateUserRequestSchema = z.object({
   email: z.string().email(),
   name: z.string(),
-  is_admin: z.boolean().default(false),
+  user_type: UserTypeSchema.optional(),
+  is_admin: z.boolean().default(false), // Legacy support
   profile_picture: z.string().optional(),
 });
 
