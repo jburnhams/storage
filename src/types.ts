@@ -5,6 +5,7 @@ export interface User {
   email: string;
   name: string;
   profile_picture: string | null;
+  profile_pic_blob?: unknown | null;
   is_admin: number; // SQLite uses INTEGER for boolean (0 or 1)
   created_at: string;
   updated_at: string;

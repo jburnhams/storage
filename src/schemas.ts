@@ -38,6 +38,8 @@ export const UpdateUserRequestSchema = z.object({
   email: z.string().email().optional(),
   is_admin: z.boolean().optional(),
   profile_picture: z.string().optional(),
+  // For multipart, this is handled outside schema validation usually,
+  // but we can add it here for type generation if needed, though usually string for multipart
 });
 
 export const CreateUserRequestSchema = z.object({
