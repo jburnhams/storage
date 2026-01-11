@@ -360,6 +360,53 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     }
   );
 
+  // DELETE /api/youtube/channel/:id
+  app.openapi(
+    createRoute({
+      method: 'delete',
+      path: '/api/youtube/channel/{id}',
+      tags: ['YouTube'],
+      summary: 'Delete YouTube Channel',
+      description: 'Deletes a channel and all associated videos.',
+      middleware: [requireAuth] as any,
+      request: {
+        params: z.object({
+          id: z.string(),
+        }),
+      },
+      responses: {
+        200: {
+          description: 'Channel deleted',
+          content: {
+            'application/json': {
+              schema: z.object({ success: z.boolean() }),
+            },
+          },
+        },
+        500: {
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const id = c.req.param('id');
+      const service = new YoutubeService(c.env);
+
+      try {
+        await service.deleteChannel(id);
+        return c.json({ success: true }, 200);
+      } catch (error: any) {
+        console.error('Delete Channel Error:', error);
+        return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
+      }
+    }
+  );
+
   // GET /api/youtube/channel/:id
   app.openapi(
     createRoute({
