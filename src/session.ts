@@ -316,11 +316,6 @@ export async function createUser(
 
   const result = await env.DB.prepare(
     `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, is_admin, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     RETURNING *`
-  )
-    .bind(request.email, request.name, profilePicture, profilePicBlob, isAdmin, now, now, null)
-    `INSERT INTO users (email, name, profile_picture, is_admin, created_at, updated_at, last_login_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )

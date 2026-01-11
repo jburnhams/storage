@@ -86,6 +86,52 @@ const getUserRoute = createRoute({
   },
 });
 
+// GET /api/users/:id
+const getUserDetailRoute = createRoute({
+  method: 'get',
+  path: '/api/users/{id}',
+  tags: ['Users'],
+  summary: 'Get user details (self or admin only)',
+  middleware: [requireAuth] as any,
+  request: {
+    params: IdParamSchema,
+  },
+  responses: {
+    200: {
+      description: 'User details',
+      content: {
+        'application/json': {
+          schema: UserResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: 'Unauthorized',
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+    },
+    403: {
+      description: 'Forbidden',
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+    },
+    404: {
+      description: 'Not Found',
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+    },
+  },
+});
+
 // GET /api/users (admin)
 const listUsersRoute = createRoute({
   method: 'get',
@@ -392,6 +438,30 @@ export function registerUserRoutes(app: AppType) {
     const session = c.get('session')!;
     const user = await getUserById(session.user_id, c.env);
 
+    if (!user) {
+      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
+    }
+
+    return c.json(userToResponse(user));
+  });
+
+  // GET /api/users/:id
+  app.openapi(getUserDetailRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const session = c.get('session')!;
+    const requesterId = session.user_id;
+
+    // Check permissions: requester must be the user or an admin
+    if (requesterId !== id) {
+      const requester = await getUserById(requesterId, c.env);
+      const isAdmin = requester && (requester.user_type === 'ADMIN' || requester.is_admin === 1);
+
+      if (!isAdmin) {
+        return c.json({ error: 'FORBIDDEN', message: 'You are not allowed to access this user' }, 403);
+      }
+    }
+
+    const user = await getUserById(id, c.env);
     if (!user) {
       return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
     }
