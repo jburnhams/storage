@@ -256,6 +256,14 @@ export class YoutubeService {
     return channel;
   }
 
+  async deleteChannel(channelId: string): Promise<void> {
+    const batch = [
+        this.env.DB.prepare('DELETE FROM youtube_videos WHERE channel_id = ?').bind(channelId),
+        this.env.DB.prepare('DELETE FROM youtube_channels WHERE youtube_id = ?').bind(channelId)
+    ];
+    await this.env.DB.batch(batch);
+  }
+
   async getVideo(id: string): Promise<YoutubeVideo> {
     // 1. Check DB
     const cached = await this.env.DB.prepare(

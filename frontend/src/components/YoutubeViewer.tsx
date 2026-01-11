@@ -331,6 +331,77 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
         );
     };
 
+    const handleDeleteChannel = async () => {
+        if (!singleData || !('custom_url' in singleData)) return;
+        const channel = singleData as YoutubeChannel;
+
+        if (!window.confirm(`Are you sure you want to delete channel "${channel.title}" and all its videos?`)) {
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+
+        try {
+            const res = await fetch(`/api/youtube/channel/${channel.youtube_id}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const json = await res.json();
+                throw new Error(json.message || json.error || 'Failed to delete channel');
+            }
+
+            // Clear view and search results if they match
+            setSingleData(null);
+            setId('');
+            if (viewMode === 'search' && selectedChannel === channel.youtube_id) {
+                setSelectedChannel('');
+                setSearchResults(null);
+            }
+
+            // Re-fetch channel list to remove it from dropdown
+            fetchChannels();
+
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResyncChannel = async () => {
+         if (!singleData || !('custom_url' in singleData)) return;
+        const channel = singleData as YoutubeChannel;
+        const channelId = channel.youtube_id;
+
+        if (!window.confirm(`Resync will delete "${channel.title}" and all its videos, then re-fetch the channel details. Continue?`)) {
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+
+        try {
+            // 1. Delete
+            const delRes = await fetch(`/api/youtube/channel/${channelId}`, { method: 'DELETE' });
+            if (!delRes.ok) {
+                 const json = await delRes.json();
+                throw new Error(json.message || json.error || 'Failed to delete channel for resync');
+            }
+
+            // 2. Re-fetch Channel (this will re-create it in DB via read-through)
+            // We set singleData to null first to show loading state properly if we wanted,
+            // but fetchChannelDetail does that.
+
+            await fetchChannelDetail(channelId);
+
+            // Re-fetch channel list to ensure it's up to date (though it was just recreated)
+            fetchChannels();
+
+        } catch (err: any) {
+            setError(err.message);
+            setLoading(false);
+        }
+    };
+
     const renderSingleResult = () => {
         if (!singleData) return null;
         const isChannel = 'custom_url' in singleData;
@@ -409,7 +480,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                             <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--color-text-dim)' }}>
                                 <div><strong>Sync Status:</strong></div>
                                 <div>Earliest: { (singleData as YoutubeChannel).sync_start_date ? new Date((singleData as YoutubeChannel).sync_start_date!).toLocaleDateString() : 'Never' }</div>
-                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                     <button onClick={handleSync} disabled={syncing} style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}>{syncing ? 'Syncing...' : 'Sync Videos'}</button>
                                     <button
                                         onClick={() => {
@@ -421,6 +492,12 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                                         style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
                                     >
                                         See Channel Videos
+                                    </button>
+                                    <button onClick={handleResyncChannel} disabled={loading || syncing} style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}>
+                                        Resync Channel
+                                    </button>
+                                    <button onClick={handleDeleteChannel} disabled={loading || syncing} style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem', background: '#dc3545', color: 'white', border: 'none' }}>
+                                        Delete Channel
                                     </button>
                                 </div>
                             </div>
