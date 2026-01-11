@@ -314,12 +314,15 @@ export async function createUser(
   const profilePicture = request.profile_picture || null;
   const profilePicBlob = request.profile_pic_blob || null;
 
+  // Convert ArrayBuffer to regular array for D1 compatibility in tests
+  const blobToStore = profilePicBlob ? Array.from(new Uint8Array(profilePicBlob)) : null;
+
   const result = await env.DB.prepare(
     `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, is_admin, created_at, updated_at, last_login_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(request.email, request.name, profilePicture, profilePicBlob, userType, isAdmin, now, now, null)
+    .bind(request.email, request.name, profilePicture, blobToStore, userType, isAdmin, now, now, null)
     .first<User>();
 
   if (!result) {

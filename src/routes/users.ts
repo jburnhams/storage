@@ -14,6 +14,7 @@ import {
   createUser,
   userToResponse,
 } from '../session';
+import { parseD1Blob } from '../utils/blob_quirks';
 import {
   UserResponseSchema,
   SessionResponseSchema,
@@ -476,9 +477,11 @@ export function registerUserRoutes(app: AppType) {
                  blob = buf.buffer;
              }
           } else if (file instanceof File) {
-             blob = await file.arrayBuffer();
+             const buf = await file.arrayBuffer();
+             blob = parseD1Blob(buf) || buf;
           } else if (typeof (file as any).arrayBuffer === 'function') {
-             blob = await (file as any).arrayBuffer();
+             const buf = await (file as any).arrayBuffer();
+             blob = parseD1Blob(buf) || buf;
           }
         }
       } else {
@@ -546,9 +549,11 @@ export function registerUserRoutes(app: AppType) {
                  blob = buf.buffer;
              }
           } else if (file instanceof File) {
-             blob = await file.arrayBuffer();
+             const buf = await file.arrayBuffer();
+             blob = parseD1Blob(buf) || buf;
           } else if (typeof (file as any).arrayBuffer === 'function') {
-             blob = await (file as any).arrayBuffer();
+             const buf = await (file as any).arrayBuffer();
+             blob = parseD1Blob(buf) || buf;
           }
 
           if (blob) {
@@ -585,13 +590,16 @@ export function registerUserRoutes(app: AppType) {
     // 1. If blob exists, serve it
     if (user && user.profile_pic_blob) {
       // Since we store as BLOB (ArrayBuffer in D1 types), we cast it
-      const blob = user.profile_pic_blob as ArrayBuffer;
-      return new Response(blob, {
-        headers: {
-          'Content-Type': 'image/jpeg', // We default to jpeg, though it might be png/gif.
-          'Cache-Control': 'public, max-age=86400',
-        },
-      });
+      const blob = parseD1Blob(user.profile_pic_blob);
+
+      if (blob) {
+        return new Response(blob, {
+          headers: {
+            'Content-Type': 'image/jpeg', // We default to jpeg, though it might be png/gif.
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
     }
 
     // 2. If no blob, try to fetch from profile_picture URL
@@ -610,7 +618,9 @@ export function registerUserRoutes(app: AppType) {
               const buffer = await fetchRes.arrayBuffer();
 
               // Store it for next time
-              await updateUser(id, { profile_pic_blob: buffer }, c.env);
+              // Convert to array if needed for D1 compatibility in tests/environments
+              const blobToStore = buffer instanceof ArrayBuffer ? Array.from(new Uint8Array(buffer)) : buffer;
+              await updateUser(id, { profile_pic_blob: blobToStore as any }, c.env);
 
               return new Response(buffer, {
                 headers: {
