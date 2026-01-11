@@ -398,6 +398,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
 
         } catch (err: any) {
             setError(err.message);
+        } finally {
             setLoading(false);
         }
     };
