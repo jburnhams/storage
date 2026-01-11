@@ -1,8 +1,11 @@
+export type UserType = 'GUEST' | 'STANDARD' | 'ADMIN';
+
 export interface UserResponse {
   id: number;
   email: string;
   name: string;
   profile_picture: string | null;
+  user_type: UserType;
   is_admin: boolean;
   created_at: string;
   updated_at: string;

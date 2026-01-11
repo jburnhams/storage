@@ -136,14 +136,15 @@ export async function getOrCreateUser(
 
   // Create new user
   const isAdmin = MASTER_ADMIN_EMAILS.includes(email) ? 1 : 0;
+  const userType = isAdmin ? 'ADMIN' : 'STANDARD';
   const now = new Date().toISOString();
 
   const result = await env.DB.prepare(
-    `INSERT INTO users (email, name, profile_picture, is_admin, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO users (email, name, profile_picture, user_type, is_admin, created_at, updated_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(email, name, profilePicture, isAdmin, now, now, now)
+    .bind(email, name, profilePicture, userType, isAdmin, now, now, now)
     .first<User>();
 
   if (!result) {
@@ -181,7 +182,7 @@ export async function getUserByEmail(
  * Check if user is admin (checks both master list and database)
  */
 export function isUserAdmin(user: User): boolean {
-  return user.is_admin === 1 || MASTER_ADMIN_EMAILS.includes(user.email);
+  return user.user_type === 'ADMIN' || user.is_admin === 1 || MASTER_ADMIN_EMAILS.includes(user.email);
 }
 
 /**
@@ -204,7 +205,7 @@ export async function promoteUserToAdmin(
 
   const now = new Date().toISOString();
   await env.DB.prepare(
-    `UPDATE users SET is_admin = 1, updated_at = ? WHERE email = ?`
+    `UPDATE users SET user_type = 'ADMIN', is_admin = 1, updated_at = ? WHERE email = ?`
   )
     .bind(now, email)
     .run();
@@ -235,10 +236,24 @@ export async function updateUser(
     fields.push("email = ?");
     values.push(updates.email);
   }
-  if (updates.is_admin !== undefined) {
+
+  // Handle user_type and is_admin legacy
+  if (updates.user_type !== undefined) {
+    fields.push("user_type = ?");
+    values.push(updates.user_type);
+
+    // Sync is_admin
+    fields.push("is_admin = ?");
+    values.push(updates.user_type === 'ADMIN' ? 1 : 0);
+  } else if (updates.is_admin !== undefined) {
     fields.push("is_admin = ?");
     values.push(updates.is_admin ? 1 : 0);
+
+    // Sync user_type
+    fields.push("user_type = ?");
+    values.push(updates.is_admin ? 'ADMIN' : 'STANDARD');
   }
+
   if (updates.profile_picture !== undefined) {
     fields.push("profile_picture = ?");
     values.push(updates.profile_picture);
@@ -285,15 +300,21 @@ export async function createUser(
   }
 
   const now = new Date().toISOString();
-  const isAdmin = request.is_admin ? 1 : 0;
+
+  // Determine user_type (prioritize explicit type, fallback to is_admin legacy flag, default to STANDARD)
+  const userType = request.user_type || (request.is_admin ? 'ADMIN' : 'STANDARD');
+
+  // Sync is_admin based on the final userType
+  const isAdmin = userType === 'ADMIN' ? 1 : 0;
+
   const profilePicture = request.profile_picture || null;
 
   const result = await env.DB.prepare(
-    `INSERT INTO users (email, name, profile_picture, is_admin, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO users (email, name, profile_picture, user_type, is_admin, created_at, updated_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(request.email, request.name, profilePicture, isAdmin, now, now, null)
+    .bind(request.email, request.name, profilePicture, userType, isAdmin, now, now, null)
     .first<User>();
 
   if (!result) {
@@ -328,6 +349,7 @@ export async function getAllSessions(env: Env): Promise<SessionResponse[]> {
     user_email: string;
     user_name: string;
     user_profile_picture: string | null;
+    user_type: string;
     user_is_admin: number;
     user_created_at: string;
     user_updated_at: string;
@@ -345,6 +367,7 @@ export async function getAllSessions(env: Env): Promise<SessionResponse[]> {
        u.email as user_email,
        u.name as user_name,
        u.profile_picture as user_profile_picture,
+       u.user_type as user_type,
        u.is_admin as user_is_admin,
        u.created_at as user_created_at,
        u.updated_at as user_updated_at,
@@ -366,6 +389,7 @@ export async function getAllSessions(env: Env): Promise<SessionResponse[]> {
       email: row.user_email,
       name: row.user_name,
       profile_picture: row.user_profile_picture,
+      user_type: row.user_type as any,
       is_admin: row.user_is_admin,
       created_at: row.user_created_at,
       updated_at: row.user_updated_at,
@@ -383,7 +407,8 @@ export function userToResponse(user: User): UserResponse {
     email: user.email,
     name: user.name,
     profile_picture: user.profile_picture,
-    is_admin: user.is_admin === 1 || MASTER_ADMIN_EMAILS.includes(user.email),
+    user_type: user.user_type,
+    is_admin: user.user_type === 'ADMIN' || user.is_admin === 1 || MASTER_ADMIN_EMAILS.includes(user.email),
     created_at: user.created_at,
     updated_at: user.updated_at,
     last_login_at: user.last_login_at,
