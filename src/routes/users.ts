@@ -14,7 +14,6 @@ import {
   createUser,
   userToResponse,
 } from '../session';
-import { parseD1Blob } from '../utils/blob_quirks';
 import {
   UserResponseSchema,
   SessionResponseSchema,
@@ -78,52 +77,6 @@ const getUserRoute = createRoute({
     },
     401: {
       description: 'Unauthorized',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-  },
-});
-
-// GET /api/users/:id
-const getUserDetailRoute = createRoute({
-  method: 'get',
-  path: '/api/users/{id}',
-  tags: ['Users'],
-  summary: 'Get user details (self or admin only)',
-  middleware: [requireAuth] as any,
-  request: {
-    params: IdParamSchema,
-  },
-  responses: {
-    200: {
-      description: 'User details',
-      content: {
-        'application/json': {
-          schema: UserResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: 'Unauthorized',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: 'Forbidden',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: 'Not Found',
       content: {
         'application/json': {
           schema: ErrorResponseSchema,
@@ -446,30 +399,6 @@ export function registerUserRoutes(app: AppType) {
     return c.json(userToResponse(user));
   });
 
-  // GET /api/users/:id
-  app.openapi(getUserDetailRoute, async (c) => {
-    const { id } = c.req.valid('param');
-    const session = c.get('session')!;
-    const requesterId = session.user_id;
-
-    // Check permissions: requester must be the user or an admin
-    if (requesterId !== id) {
-      const requester = await getUserById(requesterId, c.env);
-      const isAdmin = requester && (requester.user_type === 'ADMIN' || requester.is_admin === 1);
-
-      if (!isAdmin) {
-        return c.json({ error: 'FORBIDDEN', message: 'You are not allowed to access this user' }, 403);
-      }
-    }
-
-    const user = await getUserById(id, c.env);
-    if (!user) {
-      return c.json({ error: 'NOT_FOUND', message: 'User not found' }, 404);
-    }
-
-    return c.json(userToResponse(user));
-  });
-
   // GET /api/users
   app.openapi(listUsersRoute, async (c) => {
     const users = await getAllUsers(c.env);
@@ -547,11 +476,9 @@ export function registerUserRoutes(app: AppType) {
                  blob = buf.buffer;
              }
           } else if (file instanceof File) {
-             const buf = await file.arrayBuffer();
-             blob = parseD1Blob(buf) || buf;
+             blob = await file.arrayBuffer();
           } else if (typeof (file as any).arrayBuffer === 'function') {
-             const buf = await (file as any).arrayBuffer();
-             blob = parseD1Blob(buf) || buf;
+             blob = await (file as any).arrayBuffer();
           }
         }
       } else {
@@ -619,11 +546,9 @@ export function registerUserRoutes(app: AppType) {
                  blob = buf.buffer;
              }
           } else if (file instanceof File) {
-             const buf = await file.arrayBuffer();
-             blob = parseD1Blob(buf) || buf;
+             blob = await file.arrayBuffer();
           } else if (typeof (file as any).arrayBuffer === 'function') {
-             const buf = await (file as any).arrayBuffer();
-             blob = parseD1Blob(buf) || buf;
+             blob = await (file as any).arrayBuffer();
           }
 
           if (blob) {
@@ -656,84 +581,25 @@ export function registerUserRoutes(app: AppType) {
     if (isNaN(id)) return c.text('Invalid ID', 400);
 
     const user = await getUserById(id, c.env);
-
-    // 1. If blob exists, serve it
-    if (user && user.profile_pic_blob) {
-      // Since we store as BLOB (ArrayBuffer in D1 types), we cast it
-      const blob = parseD1Blob(user.profile_pic_blob);
-
-      if (blob) {
-        return new Response(blob, {
-          headers: {
-            'Content-Type': 'image/jpeg', // We default to jpeg, though it might be png/gif.
-            'Cache-Control': 'public, max-age=86400',
-          },
-        });
+    if (!user || !user.profile_pic_blob) {
+      // Return 404 or a default avatar? 404 is cleaner.
+      // Or redirect to profile_picture if it's a URL?
+      if (user && user.profile_picture && !user.profile_picture.startsWith('/api/')) {
+         return c.redirect(user.profile_picture);
       }
+      return c.text('Not found', 404);
     }
 
-    // 2. If no blob, try to fetch from profile_picture URL
-    if (user && user.profile_picture && !user.profile_picture.startsWith('/api/')) {
-      try {
-        const fetchRes = await fetch(user.profile_picture, {
-           redirect: 'follow',
-           headers: {
-             'User-Agent': 'Mozilla/5.0 (Compatible; Cloudflare-Worker-Avatar-Fetcher)'
-           }
-        });
+    // Since we store as BLOB (ArrayBuffer in D1 types), we cast it
+    // SQLite BLOBs come out as ArrayBuffer in Cloudflare D1
+    const blob = user.profile_pic_blob as ArrayBuffer;
 
-        if (fetchRes.ok) {
-           const contentType = fetchRes.headers.get('content-type');
-           if (contentType && contentType.toLowerCase().startsWith('image/')) {
-              const buffer = await fetchRes.arrayBuffer();
-
-              // Store it for next time
-              // Convert to array if needed for D1 compatibility in tests/environments
-              const blobToStore = buffer instanceof ArrayBuffer ? Array.from(new Uint8Array(buffer)) : buffer;
-              await updateUser(id, { profile_pic_blob: blobToStore as any }, c.env);
-
-              return new Response(buffer, {
-                headers: {
-                  'Content-Type': contentType,
-                  'Cache-Control': 'public, max-age=86400',
-                }
-              });
-           }
-        }
-      } catch (e) {
-        console.error(`Failed to fetch avatar from ${user.profile_picture}:`, e);
-      }
-
-      // If fetch failed or not an image, fall back to redirecting?
-      // The requirement says "store result in profile_pic_blob".
-      // If we can't fetch it, we probably shouldn't redirect either if we want to be strict about "store it".
-      // But preserving old behavior (redirect) as a fallback might be nice if fetch fails?
-      // The prompt says: "if the user record doesn't have a profile_pic_blob then request the image from the url ... and store the result"
-      // It implies we should serve the stored result.
-      // If fetching fails, let's fall back to redirecting so the user still sees *something* if the client can reach it but backend can't.
-      // But the test expects 404 if fetch fails (in my test plan).
-      // Let's stick to 404 if we can't serve it as per typical backend logic, OR redirect if it's just a backend reachability issue?
-      // The previous code redirected.
-      // I'll stick to redirecting if backend fetch fails, OR 404 if URL is bad.
-      // Actually, my test expects 404 for a bad URL. If I redirect to a bad URL, the client gets a 404 from the bad URL? No, the browser follows the redirect.
-      // If I return a 302 to a 404 URL, the test `res.status` will be 302 (manual redirect handling in test) or 404 (if followed).
-      // My test environment `worker.fetch` does NOT follow redirects automatically by default unless configured?
-      // Wait, `worker.fetch` returns the response from the worker. If worker returns 302, `res.status` is 302.
-      // So if I keep the redirect fallback, I need to update the test expectation or remove the fallback.
-      // The prompt implies we want to *cache* it. If we fail to cache it, we should probably still try to show it?
-      // However, for the specific requirement "request ... and store ...", if I can't request it, I can't store it.
-      // Let's fallback to redirect to be safe for existing users whose URLs might be reachable by browser but not worker (e.g. strict firewalls).
-      // But wait, the test failure showed "Expected 200, Received 302". This confirms the PREVIOUS code was redirecting.
-      // So I should only Redirect if fetch fails.
-    }
-
-    // If we are here, we have no blob, and either no URL or fetch failed/was invalid.
-    // If we have a URL and fetch failed, we *could* redirect.
-    if (user && user.profile_picture && !user.profile_picture.startsWith('/api/')) {
-       return c.redirect(user.profile_picture);
-    }
-
-    return c.text('Not found', 404);
+    return new Response(blob, {
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'Cache-Control': 'public, max-age=86400', // Cache for 1 day
+      },
+    });
   });
 
   // DELETE /api/users/:id
