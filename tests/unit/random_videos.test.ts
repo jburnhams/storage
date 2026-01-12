@@ -15,7 +15,7 @@ describe('YouTube Random Videos API', () => {
     await env.DB.prepare('DELETE FROM users').run();
 
     // Create a user and session
-    await env.DB.prepare('INSERT INTO users (id, email, name, is_admin, created_at, updated_at) VALUES (1, "test@example.com", "Test User", 1, "2023-01-01", "2023-01-01")').run();
+    await env.DB.prepare('INSERT INTO users (id, email, name, user_type, created_at, updated_at) VALUES (1, "test@example.com", "Test User", "ADMIN", "2023-01-01", "2023-01-01")').run();
     await env.DB.prepare('INSERT INTO sessions (id, user_id, created_at, expires_at, last_used_at) VALUES ("test-session", 1, "2023-01-01", "2099-01-01", "2023-01-01")').run();
 
     // Create a channel

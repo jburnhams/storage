@@ -14,7 +14,7 @@ async function setupApp(userId: number) {
     c.set('session', {
       user_id: userId,
       session_id: 'test-session',
-      is_admin: false,
+      user: { user_type: 'STANDARD' },
       type: 'user'
     });
     await next();

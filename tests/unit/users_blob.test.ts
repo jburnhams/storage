@@ -8,9 +8,9 @@ import worker from '../../src/worker';
 async function seedTestDataLocal(db: D1Database) {
   // Create users
   await db.prepare(
-    `INSERT INTO users (id, email, name, is_admin, created_at, updated_at) VALUES
-     (1, 'admin@example.com', 'Admin User', 1, datetime('now'), datetime('now')),
-     (2, 'user@example.com', 'Normal User', 0, datetime('now'), datetime('now'))`
+    `INSERT INTO users (id, email, name, user_type, created_at, updated_at) VALUES
+     (1, 'admin@example.com', 'Admin User', 'ADMIN', datetime('now'), datetime('now')),
+     (2, 'user@example.com', 'Normal User', 'STANDARD', datetime('now'), datetime('now'))`
   ).run();
 
   // Create sessions

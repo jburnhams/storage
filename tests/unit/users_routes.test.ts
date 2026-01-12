@@ -21,21 +21,21 @@ describe('User Detail API (GET /api/users/:id)', () => {
 
     // Create admin user
     adminUser = await env.DB.prepare(
-      `INSERT INTO users (email, name, is_admin, created_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) RETURNING *`
+      `INSERT INTO users (email, name, user_type, created_at, updated_at) VALUES (?, ?, 'ADMIN', datetime('now'), datetime('now')) RETURNING *`
     )
       .bind('admin@example.com', 'Admin User')
       .first<any>();
 
     // Create regular user
     regularUser = await env.DB.prepare(
-      `INSERT INTO users (email, name, is_admin, created_at, updated_at) VALUES (?, ?, 0, datetime('now'), datetime('now')) RETURNING *`
+      `INSERT INTO users (email, name, user_type, created_at, updated_at) VALUES (?, ?, 'STANDARD', datetime('now'), datetime('now')) RETURNING *`
     )
       .bind('user@example.com', 'Regular User')
       .first<any>();
 
     // Create another regular user
     otherUser = await env.DB.prepare(
-      `INSERT INTO users (email, name, is_admin, created_at, updated_at) VALUES (?, ?, 0, datetime('now'), datetime('now')) RETURNING *`
+      `INSERT INTO users (email, name, user_type, created_at, updated_at) VALUES (?, ?, 'STANDARD', datetime('now'), datetime('now')) RETURNING *`
     )
       .bind('other@example.com', 'Other User')
       .first<any>();

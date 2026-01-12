@@ -103,8 +103,8 @@ describe("Session Management", () => {
       const user = await getOrCreateUser("expired@test.com", "Expired User", "pic", env);
 
       // Manually insert an expired session
-      await env.DB.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
-        .bind("expired_sess", user.id, Date.now() - 10000)
+      await env.DB.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at, last_used_at) VALUES (?, ?, ?, ?, ?)")
+        .bind("expired_sess", user.id, new Date(Date.now() - 10000).toISOString(), new Date().toISOString(), new Date().toISOString())
         .run();
 
       await deleteExpiredSessions(env);

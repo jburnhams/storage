@@ -252,10 +252,14 @@ export async function updateUser(
     values.push(hash);
   }
 
-  // Handle user_type and is_admin legacy
+  // Handle user_type
   if (updates.user_type !== undefined) {
     fields.push("user_type = ?");
     values.push(updates.user_type);
+  } else if (updates.is_admin !== undefined) {
+    // Legacy support: map is_admin to user_type
+    fields.push("user_type = ?");
+    values.push(updates.is_admin ? 'ADMIN' : 'STANDARD');
   }
 
   if (updates.profile_picture !== undefined) {
@@ -310,7 +314,11 @@ export async function createUser(
   const now = new Date().toISOString();
 
   // Determine user_type (prioritize explicit type, default to STANDARD)
-  const userType = request.user_type || 'STANDARD';
+  let userType = request.user_type;
+  if (!userType && request.is_admin) {
+    userType = 'ADMIN';
+  }
+  userType = userType || 'STANDARD';
 
   const profilePicture = request.profile_picture || null;
   const profilePicBlob = request.profile_pic_blob || null;

@@ -10,7 +10,7 @@ describe("Multipart Storage (Unit)", () => {
         await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 
         // Create user
-        await env.DB.prepare("INSERT INTO users (email, name, is_admin) VALUES (?, ?, ?)").bind("test@test.com", "Test User", 1).run();
+        await env.DB.prepare("INSERT INTO users (email, name, user_type) VALUES (?, ?, ?)").bind("test@test.com", "Test User", 'ADMIN').run();
     });
 
     it("should store a large blob as multipart", { timeout: 10000 }, async () => {
