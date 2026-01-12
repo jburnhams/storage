@@ -101,7 +101,7 @@ export function App() {
           <button onClick={() => setActiveTab("dashboard")} disabled={activeTab === "dashboard"}>Explorer</button>
           <button onClick={() => setActiveTab("collections")} disabled={activeTab === "collections"}>Collections</button>
           <button onClick={() => setActiveTab("youtube")} disabled={activeTab === "youtube"}>YouTube</button>
-          {user.is_admin && (
+          {user.user_type === 'ADMIN' && (
             <button onClick={() => setActiveTab("users")} disabled={activeTab === "users"}>Users</button>
           )}
       </div>
@@ -111,7 +111,7 @@ export function App() {
             activeTab === "dashboard" ? (
                 <>
                     <UserDashboard user={user} />
-                    {user.is_admin && <AdminDashboard />}
+                    {user.user_type === 'ADMIN' && <AdminDashboard />}
                     <hr />
                     <StorageExplorer user={user} />
                 </>

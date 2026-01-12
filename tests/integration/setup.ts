@@ -17,7 +17,7 @@ export interface UserRow {
   email: string;
   name: string;
   profile_picture: string | null;
-  is_admin: number;
+  user_type: string;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;
@@ -146,27 +146,27 @@ export async function seedTestData(db: D1Database) {
   // Insert test users
   const adminResult = await db
     .prepare(
-      `INSERT INTO users (email, name, profile_picture, is_admin)
+      `INSERT INTO users (email, name, profile_picture, user_type)
        VALUES (?, ?, ?, ?)`
     )
     .bind(
       "admin@test.com",
       "Test Admin",
       "https://example.com/admin.jpg",
-      1
+      'ADMIN'
     )
     .run();
 
   const userResult = await db
     .prepare(
-      `INSERT INTO users (email, name, profile_picture, is_admin)
+      `INSERT INTO users (email, name, profile_picture, user_type)
        VALUES (?, ?, ?, ?)`
     )
     .bind(
       "user@test.com",
       "Test User",
       "https://example.com/user.jpg",
-      0
+      'STANDARD'
     )
     .run();
 

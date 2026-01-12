@@ -1,3 +1,4 @@
+import { isUserAdmin } from "./session";
 import type { Env, KeyValueEntryJoined, User, ValueEntry, KeyValueCollection, KeyValueCollectionResponse } from "./types";
 
 const MAX_BLOCK_SIZE = 1.8 * 1024 * 1024; // 1.8 MB
@@ -344,7 +345,7 @@ export async function listEntries(
 
   const params: any[] = [];
 
-  if (!user.is_admin) {
+  if (!isUserAdmin(user)) {
     query += " AND k.user_id = ?";
     params.push(user.id);
   }

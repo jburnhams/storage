@@ -455,7 +455,7 @@ export function registerUserRoutes(app: AppType) {
     // Check permissions: requester must be the user or an admin
     if (requesterId !== id) {
       const requester = await getUserById(requesterId, c.env);
-      const isAdmin = requester && (requester.user_type === 'ADMIN' || requester.is_admin === 1);
+      const isAdmin = requester && (requester.user_type === 'ADMIN');
 
       if (!isAdmin) {
         return c.json({ error: 'FORBIDDEN', message: 'You are not allowed to access this user' }, 403);
@@ -531,7 +531,7 @@ export function registerUserRoutes(app: AppType) {
         body = {
           email: formData['email'],
           name: formData['name'],
-          is_admin: formData['is_admin'] === 'true',
+          user_type: formData['user_type'],
           profile_picture: formData['profile_picture'] ? String(formData['profile_picture']) : undefined,
         };
 
@@ -600,11 +600,11 @@ export function registerUserRoutes(app: AppType) {
         body = {
           name: formData['name'],
           email: formData['email'],
-          is_admin: formData['is_admin'] === 'true', // check if string 'true'
+          user_type: formData['user_type'], // check if string 'true'
           profile_picture: formData['profile_picture'] ? String(formData['profile_picture']) : undefined,
         };
 
-        if (formData['is_admin'] === undefined) delete body.is_admin;
+        if (formData['user_type'] === undefined) delete body.user_type;
         if (formData['name'] === undefined) delete body.name;
         if (formData['email'] === undefined) delete body.email;
 

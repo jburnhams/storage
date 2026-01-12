@@ -37,14 +37,14 @@ describe("D1 Runtime Operations", () => {
     it("should insert a new user", async () => {
       const result = await db
         .prepare(
-          `INSERT INTO users (email, name, profile_picture, is_admin)
+          `INSERT INTO users (email, name, profile_picture, user_type)
            VALUES (?, ?, ?, ?)`
         )
         .bind(
           "newuser@example.com",
           "New User",
           "https://example.com/pic.jpg",
-          0
+          'STANDARD'
         )
         .run();
 
@@ -60,7 +60,7 @@ describe("D1 Runtime Operations", () => {
       expect(user).toBeDefined();
       expect(user?.email).toBe("newuser@example.com");
       expect(user?.name).toBe("New User");
-      expect(user?.is_admin).toBe(0);
+      expect(user?.user_type).toBe('STANDARD');
     });
 
     it("should query users by email", async () => {
@@ -74,18 +74,18 @@ describe("D1 Runtime Operations", () => {
       expect(user).toBeDefined();
       expect(user?.email).toBe("admin@test.com");
       expect(user?.name).toBe("Test Admin");
-      expect(user?.is_admin).toBe(1);
+      expect(user?.user_type).toBe('ADMIN');
     });
 
     it("should query all admin users", async () => {
       await seedTestData(db);
 
       const admins = await db
-        .prepare(`SELECT * FROM users WHERE is_admin = 1`)
+        .prepare(`SELECT * FROM users WHERE user_type = 'ADMIN'`)
         .all();
 
       expect(admins.results.length).toBeGreaterThanOrEqual(1);
-      expect(admins.results.every((u: any) => u.is_admin === 1)).toBe(true);
+      expect(admins.results.every((u: any) => u.user_type === 'ADMIN')).toBe(true);
     });
 
     it("should update user information", async () => {
@@ -181,7 +181,7 @@ describe("D1 Runtime Operations", () => {
 
       const result = await db
         .prepare(
-          `SELECT s.*, u.email, u.name, u.profile_picture, u.is_admin
+          `SELECT s.*, u.email, u.name, u.profile_picture, u.user_type
            FROM sessions s
            INNER JOIN users u ON s.user_id = u.id
            WHERE s.id = ?`
@@ -191,7 +191,7 @@ describe("D1 Runtime Operations", () => {
 
       expect(result).toBeDefined();
       expect(result?.email).toBe("admin@test.com");
-      expect(result?.is_admin).toBe(1);
+      expect(result?.user_type).toBe('ADMIN');
     });
 
     it("should update session last_used_at timestamp", async () => {
@@ -316,7 +316,7 @@ describe("D1 Runtime Operations", () => {
             u.id as user_id,
             u.email,
             u.name,
-            u.is_admin
+            u.user_type
            FROM sessions s
            INNER JOIN users u ON s.user_id = u.id
            WHERE s.expires_at > ?

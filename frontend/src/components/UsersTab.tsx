@@ -15,14 +15,12 @@ export function UsersTab({ user }: UsersTabProps) {
     name: string;
     email: string;
     user_type: UserType;
-    is_admin: boolean;
     profile_picture: string;
     password?: string;
   }>({
     name: "",
     email: "",
     user_type: 'STANDARD',
-    is_admin: false,
     profile_picture: "",
     password: "",
   });
@@ -106,7 +104,6 @@ export function UsersTab({ user }: UsersTabProps) {
       name: "",
       email: "",
       user_type: 'STANDARD',
-      is_admin: false,
       profile_picture: "",
       password: "",
     });
@@ -120,7 +117,6 @@ export function UsersTab({ user }: UsersTabProps) {
       name: user.name,
       email: user.email,
       user_type: user.user_type || 'STANDARD',
-      is_admin: user.is_admin,
       profile_picture: user.profile_picture || "",
       password: "",
     });
@@ -159,7 +155,7 @@ export function UsersTab({ user }: UsersTabProps) {
         const formDataObj = new FormData();
         formDataObj.append("name", formData.name);
         formDataObj.append("email", formData.email);
-        formDataObj.append("is_admin", String(formData.is_admin));
+        formDataObj.append("user_type", formData.user_type);
         if (formData.password) {
            formDataObj.append("password", formData.password);
         }

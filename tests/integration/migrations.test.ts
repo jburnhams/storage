@@ -60,7 +60,7 @@ describe("D1 Database Migrations", () => {
 
     // Verify user indexes
     expect(indexNames).toContain("idx_users_email");
-    expect(indexNames).toContain("idx_users_is_admin");
+    expect(indexNames).not.toContain("idx_users_is_admin");
 
     // Verify session indexes
     expect(indexNames).toContain("idx_sessions_user_id");
@@ -78,7 +78,7 @@ describe("D1 Database Migrations", () => {
     expect(columns).toContain("email");
     expect(columns).toContain("name");
     expect(columns).toContain("profile_picture");
-    expect(columns).toContain("is_admin");
+    expect(columns).not.toContain("is_admin");
     expect(columns).toContain("created_at");
     expect(columns).toContain("updated_at");
     expect(columns).toContain("last_login_at");
