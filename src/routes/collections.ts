@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Env, User } from '../types';
 import type { SessionContext } from '../middleware';
-import { requireAuth, attemptAuth } from '../middleware';
+import { requireAuth, requireStandard, attemptAuth } from '../middleware';
 import {
   createCollection,
   getCollection,
@@ -64,7 +64,7 @@ const createCollectionRoute = createRoute({
   path: '/api/collections',
   tags: ['Collections'],
   summary: 'Create a new collection',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     body: {
       content: {
@@ -155,7 +155,7 @@ const updateCollectionRoute = createRoute({
   path: '/api/collections/{id}',
   tags: ['Collections'],
   summary: 'Update a collection',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     params: IdParamSchema,
     body: {
@@ -216,7 +216,7 @@ const deleteCollectionRoute = createRoute({
   path: '/api/collections/{id}',
   tags: ['Collections'],
   summary: 'Delete a collection',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     params: IdParamSchema,
   },
@@ -263,7 +263,7 @@ const uploadCollectionZipRoute = createRoute({
   tags: ['Collections'],
   summary: 'Upload ZIP to collection (multipart/form-data)',
   description: 'Upload a ZIP file to extract into the collection. FormData field: file (required ZIP file)',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     params: IdParamSchema,
   },

@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Env } from '../types';
 import type { SessionContext } from '../middleware';
-import { requireAuth } from '../middleware';
+import { requireAuth, requireStandard } from '../middleware';
 import {
   createEntry,
   getEntryById,
@@ -65,7 +65,7 @@ const createEntryRoute = createRoute({
   tags: ['Storage'],
   summary: 'Create or update an entry (multipart/form-data)',
   description: 'Upload a file or string value. If an entry with the same key exists in the specified collection, it will be overwritten. FormData fields: key (required), type (optional), string_value (optional), json_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   responses: {
     200: {
       description: 'Entry created',
@@ -151,7 +151,7 @@ const updateEntryRoute = createRoute({
   tags: ['Storage'],
   summary: 'Update an entry (multipart/form-data)',
   description: 'Update an existing entry. FormData fields: key (optional), type (optional), string_value (optional), json_value (optional), file (optional File), collection_id (optional number), metadata (optional string)',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     params: IdParamSchema,
   },
@@ -205,7 +205,7 @@ const deleteEntryRoute = createRoute({
   path: '/api/storage/entry/{id}',
   tags: ['Storage'],
   summary: 'Delete an entry',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     params: IdParamSchema,
   },

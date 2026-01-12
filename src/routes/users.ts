@@ -655,6 +655,16 @@ export function registerUserRoutes(app: AppType) {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.text('Invalid ID', 400);
 
+    // Check if requester is GUEST, if so, they cannot trigger the cache update logic
+    const session = c.get('session');
+    let isGuest = false;
+    if (session) {
+      const requester = await getUserById(session.user_id, c.env);
+      if (requester && requester.user_type === 'GUEST') {
+        isGuest = true;
+      }
+    }
+
     const user = await getUserById(id, c.env);
 
     // 1. If blob exists, serve it
@@ -687,10 +697,12 @@ export function registerUserRoutes(app: AppType) {
            if (contentType && contentType.toLowerCase().startsWith('image/')) {
               const buffer = await fetchRes.arrayBuffer();
 
-              // Store it for next time
-              // Convert to array if needed for D1 compatibility in tests/environments
-              const blobToStore = buffer instanceof ArrayBuffer ? Array.from(new Uint8Array(buffer)) : buffer;
-              await updateUser(id, { profile_pic_blob: blobToStore as any }, c.env);
+              // Store it for next time (ONLY if not GUEST, as guests cannot write)
+              if (!isGuest) {
+                  // Convert to array if needed for D1 compatibility in tests/environments
+                  const blobToStore = buffer instanceof ArrayBuffer ? Array.from(new Uint8Array(buffer)) : buffer;
+                  await updateUser(id, { profile_pic_blob: blobToStore as any }, c.env);
+              }
 
               return new Response(buffer, {
                 headers: {

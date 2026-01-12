@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Env, User } from '../types';
 import type { SessionContext } from '../middleware';
-import { requireAuth } from '../middleware';
+import { requireAuth, requireStandard } from '../middleware';
 import { getEntryById, deleteEntry, getEntryByKeySecret, getCollectionBySecret, listEntries } from '../storage';
 import { getUserById, isUserAdmin } from '../session';
 import JSZip from 'jszip';
@@ -116,7 +116,7 @@ const bulkDeleteRoute = createRoute({
   path: '/api/storage/bulk/delete',
   tags: ['Bulk Operations'],
   summary: 'Bulk delete entries',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     body: {
       content: {
