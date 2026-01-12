@@ -146,7 +146,7 @@ export async function getOrCreateUser(
 
   const result = await env.DB.prepare(
     `INSERT INTO users (email, name, profile_picture, user_type, password_salt, password_hash, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
     .bind(email, name, profilePicture, userType, salt, hash, now, now, now)
@@ -333,7 +333,7 @@ export async function createUser(
 
   const result = await env.DB.prepare(
     `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, password_salt, password_hash, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
     .bind(request.email, request.name, profilePicture, blobToStore, userType, salt, hash, now, now, null)

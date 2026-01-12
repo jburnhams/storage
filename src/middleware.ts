@@ -136,7 +136,23 @@ export async function requireAuth(c: Context<{ Bindings: Env; Variables: { sessi
   await next();
 }
 
-// ===== Admin Authorization Middleware =====
+// ===== Authorization Middleware =====
+
+export async function requireStandard(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
+  const sessionContext = c.get('session');
+  if (!sessionContext) {
+    return createUnauthorizedResponse(c, 'Authentication required');
+  }
+
+  const { getUserById } = await import('./session');
+  const user = await getUserById(sessionContext.user_id, c.env);
+
+  if (!user || user.user_type === 'GUEST') {
+    return c.json({ error: 'FORBIDDEN', message: 'Write access denied for guests' }, 403);
+  }
+
+  await next();
+}
 
 export async function requireAdmin(c: Context<{ Bindings: Env; Variables: { session?: SessionContext } }>, next: Next) {
   const sessionContext = c.get('session');

@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { Env } from '../types';
 import { YoutubeService } from '../services/youtube';
-import { requireAuth } from '../middleware';
+import { requireAuth, requireStandard } from '../middleware';
 import { buildSqlSearch } from '../utils/db_search';
 import { GetRandomVideosQuerySchema, RandomVideoResponseSchema, ErrorResponseSchema } from '../schemas';
 
@@ -310,7 +310,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
       tags: ['YouTube'],
       summary: 'Sync Channel Videos',
       description: 'Incrementally fetches videos for a channel using a sliding window.',
-      middleware: [requireAuth] as any,
+      middleware: [requireAuth, requireStandard] as any,
       request: {
         params: z.object({
           id: z.string(),
@@ -368,7 +368,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
       tags: ['YouTube'],
       summary: 'Delete YouTube Channel',
       description: 'Deletes a channel and all associated videos.',
-      middleware: [requireAuth] as any,
+      middleware: [requireAuth, requireStandard] as any,
       request: {
         params: z.object({
           id: z.string(),

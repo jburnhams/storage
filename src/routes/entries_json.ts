@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { Env } from '../types';
 import type { SessionContext } from '../middleware';
-import { requireAuth } from '../middleware';
+import { requireAuth, requireStandard } from '../middleware';
 import {
   createEntry,
   getEntryById,
@@ -36,7 +36,7 @@ const createEntryJsonRoute = createRoute({
   tags: ['Storage'],
   summary: 'Create or update an entry or multiple entries (JSON)',
   description: 'Create or update entries using JSON payload. Accepts a single object or an array of objects. If an entry with the same key exists in the specified collection, it will be overwritten. Use "blob_value" for base64 encoded binary data. Use "json_value" for raw JSON objects.',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     body: {
       content: {
@@ -81,7 +81,7 @@ const updateEntryJsonRoute = createRoute({
   tags: ['Storage'],
   summary: 'Update an entry (JSON)',
   description: 'Update an entry using JSON payload. Use "blob_value" for base64 encoded binary data. Use "json_value" for raw JSON objects.',
-  middleware: [requireAuth] as any,
+  middleware: [requireAuth, requireStandard] as any,
   request: {
     params: IdParamSchema,
     body: {
