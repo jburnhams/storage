@@ -10,6 +10,8 @@ export interface User {
   profile_pic_blob?: unknown | null;
   user_type: UserType;
   is_admin: number; // SQLite uses INTEGER for boolean (0 or 1)
+  password_salt: string | null;
+  password_hash: string | null;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;

@@ -1,5 +1,6 @@
 import type { Env, Session, User, UserResponse, SessionResponse } from "./types";
 import type { UpdateUserRequest, CreateUserRequest } from "./schemas";
+import { generateSalt, hashPassword } from "./utils/crypto";
 
 const SESSION_DURATION_DAYS = 7;
 const SESSION_DURATION_MS = SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000;
@@ -139,12 +140,17 @@ export async function getOrCreateUser(
   const userType = isAdmin ? 'ADMIN' : 'STANDARD';
   const now = new Date().toISOString();
 
+  // Generate random password/salt for OAuth users
+  const salt = generateSalt();
+  const randomPassword = generateSalt(32); // Use salt gen for random string
+  const hash = await hashPassword(randomPassword, salt);
+
   const result = await env.DB.prepare(
-    `INSERT INTO users (email, name, profile_picture, user_type, is_admin, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO users (email, name, profile_picture, user_type, is_admin, password_salt, password_hash, created_at, updated_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(email, name, profilePicture, userType, isAdmin, now, now, now)
+    .bind(email, name, profilePicture, userType, isAdmin, salt, hash, now, now, now)
     .first<User>();
 
   if (!result) {
@@ -237,6 +243,16 @@ export async function updateUser(
     values.push(updates.email);
   }
 
+  // Handle password update
+  if (updates.password !== undefined) {
+    const salt = generateSalt();
+    const hash = await hashPassword(updates.password, salt);
+    fields.push("password_salt = ?");
+    values.push(salt);
+    fields.push("password_hash = ?");
+    values.push(hash);
+  }
+
   // Handle user_type and is_admin legacy
   if (updates.user_type !== undefined) {
     fields.push("user_type = ?");
@@ -314,15 +330,28 @@ export async function createUser(
   const profilePicture = request.profile_picture || null;
   const profilePicBlob = request.profile_pic_blob || null;
 
+  // Generate password hash
+  let salt: string;
+  let hash: string;
+
+  if (request.password) {
+    salt = generateSalt();
+    hash = await hashPassword(request.password, salt);
+  } else {
+    // Generate random password
+    salt = generateSalt();
+    const randomPassword = generateSalt(32);
+    hash = await hashPassword(randomPassword, salt);
+  }
   // Convert ArrayBuffer to regular array for D1 compatibility in tests
   const blobToStore = profilePicBlob ? Array.from(new Uint8Array(profilePicBlob)) : null;
 
   const result = await env.DB.prepare(
-    `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, is_admin, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, is_admin, password_salt, password_hash, created_at, updated_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(request.email, request.name, profilePicture, blobToStore, userType, isAdmin, now, now, null)
+    .bind(request.email, request.name, profilePicture, blobToStore, userType, isAdmin, salt, hash, now, now, null)
     .first<User>();
 
   if (!result) {
