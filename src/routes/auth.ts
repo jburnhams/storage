@@ -11,10 +11,11 @@ import {
   getGoogleUserInfo,
   getRedirectUri,
 } from '../oauth';
-import { getOrCreateUser, createSession } from '../session';
+import { getOrCreateUser, createSession, getUserByEmail } from '../session';
 import { setSessionCookie, setStateCookie, getStateFromCookie, clearSessionCookie, clearStateCookie } from '../cookie';
-import { AuthCallbackQuerySchema, AuthLoginQuerySchema, ErrorResponseSchema } from '../schemas';
+import { AuthCallbackQuerySchema, AuthLoginQuerySchema, ErrorResponseSchema, AuthLoginBodySchema } from '../schemas';
 import { loadSession } from '../middleware';
+import { hashPassword } from '../utils/crypto';
 
 type AppType = OpenAPIHono<{
   Bindings: Env;
@@ -33,6 +34,49 @@ const loginRoute = createRoute({
   responses: {
     302: {
       description: 'Redirect to Google OAuth',
+    },
+    500: {
+      description: 'Server error',
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+    },
+  },
+});
+
+// POST /auth/login
+const passwordLoginRoute = createRoute({
+  method: 'post',
+  path: '/auth/login',
+  tags: ['Authentication'],
+  summary: 'Login with email and password',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: AuthLoginBodySchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Successfully logged in',
+      content: {
+        'application/json': {
+          schema: z.object({ message: z.string(), redirect: z.string().optional() }),
+        },
+      },
+    },
+    401: {
+      description: 'Invalid credentials',
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
     },
     500: {
       description: 'Server error',
@@ -118,7 +162,45 @@ const logoutRoute = createRoute({
 });
 
 export function registerAuthRoutes(app: AppType) {
-  // POST /auth/login
+  // POST /auth/login (Password)
+  app.openapi(passwordLoginRoute, async (c) => {
+    const { email, password } = c.req.valid('json');
+
+    try {
+      const user = await getUserByEmail(email, c.env);
+      if (!user) {
+        return c.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password' }, 401);
+      }
+
+      if (!user.password_salt || !user.password_hash) {
+        // User has no password set (OAuth only maybe, or legacy)
+        return c.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password' }, 401);
+      }
+
+      const inputHash = await hashPassword(password, user.password_salt);
+      if (inputHash !== user.password_hash) {
+        return c.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password' }, 401);
+      }
+
+      // Success
+      const session = await createSession(user.id, c.env);
+
+      // Determine redirect (for now just return success, frontend handles redirect)
+      return new Response(JSON.stringify({ message: 'Login successful', redirect: '/' }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Set-Cookie': setSessionCookie(session.id, c.req.raw),
+        },
+      });
+
+    } catch (error) {
+       console.error('Password login error:', error);
+       return c.json({ error: 'SERVER_ERROR', message: 'Internal server error' }, 500);
+    }
+  });
+
+  // GET /auth/login (OAuth Init)
   app.openapi(loginRoute, async (c) => {
     const { redirect } = c.req.valid('query');
 
