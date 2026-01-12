@@ -12,7 +12,7 @@ import {
   entryToResponse,
   getEntryInCollection,
 } from '../storage';
-import { getUserById } from '../session';
+import { getUserById, isUserAdmin } from '../session';
 import {
   EntryResponseSchema,
   EntryListResponseSchema,
@@ -381,7 +381,7 @@ export function registerEntryRoutes(app: AppType) {
         const existing = await getEntryInCollection(c.env, key, collectionId);
         if (existing) {
           // Check permission to update existing entry
-          if (!user.is_admin && existing.user_id !== user.id) {
+          if (!isUserAdmin(user) && existing.user_id !== user.id) {
             return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
           }
 
@@ -441,7 +441,7 @@ export function registerEntryRoutes(app: AppType) {
     }
 
     // Access Control
-    if (!user.is_admin && entry.user_id !== user.id) {
+    if (!isUserAdmin(user) && entry.user_id !== user.id) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
@@ -474,7 +474,7 @@ export function registerEntryRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
-    if (!user.is_admin && existing.user_id !== user.id) {
+    if (!isUserAdmin(user) && existing.user_id !== user.id) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
@@ -627,7 +627,7 @@ export function registerEntryRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
-    if (!user.is_admin && existing.user_id !== user.id) {
+    if (!isUserAdmin(user) && existing.user_id !== user.id) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 

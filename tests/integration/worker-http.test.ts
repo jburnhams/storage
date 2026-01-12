@@ -216,7 +216,7 @@ describe("Worker HTTP Integration Tests", () => {
         .bind("user@test.com")
         .first() as unknown as UserRow;
 
-      expect(user.is_admin).toBe(1);
+      expect(user.user_type).toBe("ADMIN");
     });
 
     it("should return 400 for /api/admin/promote with invalid email", async () => {

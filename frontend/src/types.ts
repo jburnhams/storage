@@ -6,7 +6,6 @@ export interface UserResponse {
   name: string;
   profile_picture: string | null;
   user_type: UserType;
-  is_admin: boolean;
   created_at: string;
   updated_at: string;
   last_login_at: string | null;

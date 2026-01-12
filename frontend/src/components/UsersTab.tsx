@@ -15,13 +15,11 @@ export function UsersTab({ user }: UsersTabProps) {
     name: string;
     email: string;
     user_type: UserType;
-    is_admin: boolean;
     profile_picture: string;
   }>({
     name: "",
     email: "",
     user_type: 'STANDARD',
-    is_admin: false,
     profile_picture: "",
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -104,7 +102,6 @@ export function UsersTab({ user }: UsersTabProps) {
       name: "",
       email: "",
       user_type: 'STANDARD',
-      is_admin: false,
       profile_picture: "",
     });
     setIsModalOpen(true);
@@ -117,7 +114,6 @@ export function UsersTab({ user }: UsersTabProps) {
       name: user.name,
       email: user.email,
       user_type: user.user_type || 'STANDARD',
-      is_admin: user.is_admin,
       profile_picture: user.profile_picture || "",
     });
     setIsModalOpen(true);
@@ -155,7 +151,7 @@ export function UsersTab({ user }: UsersTabProps) {
         const formDataObj = new FormData();
         formDataObj.append("name", formData.name);
         formDataObj.append("email", formData.email);
-        formDataObj.append("is_admin", String(formData.is_admin));
+        formDataObj.append("user_type", formData.user_type);
         if (formData.profile_picture) {
           formDataObj.append("profile_picture", formData.profile_picture);
         }

@@ -122,7 +122,7 @@ export function AdminDashboard() {
                       </div>
                     </td>
                     <td>{user.email}</td>
-                    <td>{user.is_admin ? "✓" : "—"}</td>
+                    <td>{user.user_type === "ADMIN" ? "✓" : "—"}</td>
                     <td>{formatDate(user.created_at)}</td>
                     <td>
                       {user.last_login_at

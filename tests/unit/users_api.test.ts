@@ -19,7 +19,7 @@ describe('User Management API', () => {
 
     // Create admin user
     const adminRes = await env.DB.prepare(
-      `INSERT INTO users (email, name, is_admin, created_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) RETURNING *`
+      `INSERT INTO users (email, name, user_type, created_at, updated_at) VALUES (?, ?, 'ADMIN', datetime('now'), datetime('now')) RETURNING *`
     )
       .bind('admin@example.com', 'Admin User')
       .first<any>();
@@ -27,7 +27,7 @@ describe('User Management API', () => {
 
     // Create regular user
     const userRes = await env.DB.prepare(
-      `INSERT INTO users (email, name, is_admin, created_at, updated_at) VALUES (?, ?, 0, datetime('now'), datetime('now')) RETURNING *`
+      `INSERT INTO users (email, name, user_type, created_at, updated_at) VALUES (?, ?, 'STANDARD', datetime('now'), datetime('now')) RETURNING *`
     )
       .bind('user@example.com', 'Regular User')
       .first<any>();
@@ -78,7 +78,7 @@ describe('User Management API', () => {
     const newUser = {
       email: 'new@example.com',
       name: 'New User',
-      is_admin: false,
+      user_type: 'STANDARD',
     };
     const request = new Request('http://localhost/api/users', {
       method: 'POST',
@@ -107,7 +107,7 @@ describe('User Management API', () => {
     const ctx = createExecutionContext();
     const updates = {
       name: 'Updated Name',
-      is_admin: true,
+      user_type: 'ADMIN',
     };
     const request = new Request(`http://localhost/api/users/${regularUser.id}`, {
       method: 'PUT',
@@ -130,7 +130,7 @@ describe('User Management API', () => {
       .bind(regularUser.id)
       .first<any>();
     expect(dbUser.name).toBe(updates.name);
-    expect(dbUser.is_admin).toBe(1);
+    expect(dbUser.user_type).toBe('ADMIN');
   });
 
   it('allows admin to delete a user', async () => {

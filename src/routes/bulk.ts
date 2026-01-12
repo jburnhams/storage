@@ -4,7 +4,7 @@ import type { Env, User } from '../types';
 import type { SessionContext } from '../middleware';
 import { requireAuth } from '../middleware';
 import { getEntryById, deleteEntry, getEntryByKeySecret, getCollectionBySecret, listEntries } from '../storage';
-import { getUserById } from '../session';
+import { getUserById, isUserAdmin } from '../session';
 import JSZip from 'jszip';
 import {
   BulkDownloadRequestSchema,
@@ -212,7 +212,7 @@ export function registerBulkRoutes(app: AppType) {
       for (const id of entry_ids) {
         const entry = await getEntryById(c.env, id);
         if (!entry) continue;
-        if (entry.user_id !== user.id && !user.is_admin) continue;
+        if (entry.user_id !== user.id && !isUserAdmin(user)) continue;
 
         if (entry.blob_value) {
           zip.file(entry.key, entry.blob_value as any);
@@ -254,7 +254,7 @@ export function registerBulkRoutes(app: AppType) {
       for (const id of entry_ids) {
         const entry = await getEntryById(c.env, id);
         if (!entry) continue;
-        if (entry.user_id !== user.id && !user.is_admin) continue;
+        if (entry.user_id !== user.id && !isUserAdmin(user)) continue;
 
         if (entry.blob_value) {
           contents.push({
@@ -292,7 +292,7 @@ export function registerBulkRoutes(app: AppType) {
       for (const id of entry_ids) {
         const entry = await getEntryById(c.env, id);
         if (!entry) continue;
-        if (entry.user_id !== user.id && !user.is_admin) continue;
+        if (entry.user_id !== user.id && !isUserAdmin(user)) continue;
 
         await deleteEntry(c.env, id);
       }

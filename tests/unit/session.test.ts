@@ -154,32 +154,25 @@ describe("Session Management", () => {
   });
 
   describe("isUserAdmin", () => {
-    it("should return true if user is admin via is_admin flag", () => {
-      const user = { is_admin: 1, email: "user@example.com", user_type: "STANDARD" } as User;
-      expect(isUserAdmin(user)).toBe(true);
-    });
-
     it("should return true if user is admin via user_type", () => {
-      const user = { is_admin: 0, email: "user@example.com", user_type: "ADMIN" } as User;
+      const user = { email: "user@example.com", user_type: "ADMIN" } as User;
       expect(isUserAdmin(user)).toBe(true);
     });
 
     it("should return false if user is not admin", () => {
-      const user = { is_admin: 0, email: "user@example.com", user_type: "STANDARD" } as User;
+      const user = { email: "user@example.com", user_type: "STANDARD" } as User;
       expect(isUserAdmin(user)).toBe(false);
     });
   });
 
   describe("promoteUserToAdmin", () => {
-    it("should set is_admin to 1 and user_type to ADMIN", async () => {
+    it("should set user_type to ADMIN", async () => {
        const user = await getOrCreateUser("promote@test.com", "Promote User", "pic", env);
-       expect(user.is_admin).toBe(0); // Default
        expect(user.user_type).toBe("STANDARD");
 
       await promoteUserToAdmin("promote@test.com", env);
 
       const updated = await getUserById(user.id, env);
-      expect(updated!.is_admin).toBe(1);
       expect(updated!.user_type).toBe("ADMIN");
     });
   });
@@ -211,7 +204,7 @@ describe("Session Management", () => {
       const user = {
         id: 1,
         email: "test@example.com",
-        is_admin: 1,
+        user_type: 'ADMIN',
         // ... other fields
       } as User;
 
