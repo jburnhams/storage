@@ -68,7 +68,7 @@ export function CollectionsManager({ user }: Props) {
     };
 
     const handleExportJson = (id: number) => {
-         window.open(`/api/collections/${id}/export`, "_blank");
+         window.open(`/api/collections/${id}`, "_blank");
     };
 
     if (viewingCollection) {
@@ -123,7 +123,7 @@ export function CollectionsManager({ user }: Props) {
                                         <button onClick={() => handleExportJson(c.id)}>Export JSON</button>
                                         <button onClick={() => handleDelete(c.id)}>Delete</button>
                                         <button onClick={() => {
-                                            const link = `${window.location.origin}/api/collections/${c.id}/export?secret=${c.secret}`;
+                                            const link = `${window.location.origin}/api/collections/${c.id}?secret=${c.secret}`;
                                             navigator.clipboard.writeText(link);
                                             alert("Public JSON link copied!");
                                         }}>Share Link</button>
