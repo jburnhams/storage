@@ -73,9 +73,6 @@ describe("Session Management", () => {
       const user = await getOrCreateUser("upd@test.com", "Upd User", "pic", env);
       const created = await createSession(user.id, env);
 
-      // Wait a bit or manually set older time if possible (but we just check it runs)
-      // Actually SQLITE uses seconds for unix epoch or ISO string.
-
       await updateSessionLastUsed(created.id, env);
 
       const updated = await env.DB.prepare("SELECT last_used_at FROM sessions WHERE id = ?").bind(created.id).first();
@@ -97,12 +94,8 @@ describe("Session Management", () => {
 
   describe("deleteExpiredSessions", () => {
     it("should delete expired sessions", async () => {
-      // Ensure user exists (created in beforeEach or we create one here)
-      // We rely on getOrCreateUser in other tests, but here we manually insert.
-      // Let's create a user specifically for this test to be safe.
       const user = await getOrCreateUser("expired@test.com", "Expired User", "pic", env);
 
-      // Manually insert an expired session
       await env.DB.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
         .bind("expired_sess", user.id, Date.now() - 10000)
         .run();
@@ -116,14 +109,11 @@ describe("Session Management", () => {
 
   describe("getOrCreateUser", () => {
     it("should return existing user and update login info", async () => {
-      // Create first
       const user1 = await getOrCreateUser("exist@test.com", "Old Name", "pic", env);
-
-      // Get again with new name
       const user2 = await getOrCreateUser("exist@test.com", "New Name", "pic", env);
 
       expect(user2.id).toBe(user1.id);
-      expect(user2.name).toBe("New Name"); // Should have updated
+      expect(user2.name).toBe("New Name");
     });
 
     it("should create new user if not exists", async () => {
@@ -136,7 +126,6 @@ describe("Session Management", () => {
   describe("getUserById", () => {
     it("should return user by id", async () => {
       const created = await getOrCreateUser("id@test.com", "ID User", "pic", env);
-
       const result = await getUserById(created.id, env);
       expect(result).toBeDefined();
       expect(result!.email).toBe("id@test.com");
@@ -146,7 +135,6 @@ describe("Session Management", () => {
   describe("getUserByEmail", () => {
     it("should return user by email", async () => {
        const created = await getOrCreateUser("email@test.com", "Email User", "pic", env);
-
       const result = await getUserByEmail("email@test.com", env);
       expect(result).toBeDefined();
       expect(result!.id).toBe(created.id);
@@ -154,32 +142,25 @@ describe("Session Management", () => {
   });
 
   describe("isUserAdmin", () => {
-    it("should return true if user is admin via is_admin flag", () => {
-      const user = { is_admin: 1, email: "user@example.com", user_type: "STANDARD" } as User;
-      expect(isUserAdmin(user)).toBe(true);
-    });
-
     it("should return true if user is admin via user_type", () => {
-      const user = { is_admin: 0, email: "user@example.com", user_type: "ADMIN" } as User;
+      const user = { email: "user@example.com", user_type: "ADMIN" } as User;
       expect(isUserAdmin(user)).toBe(true);
     });
 
     it("should return false if user is not admin", () => {
-      const user = { is_admin: 0, email: "user@example.com", user_type: "STANDARD" } as User;
+      const user = { email: "user@example.com", user_type: "STANDARD" } as User;
       expect(isUserAdmin(user)).toBe(false);
     });
   });
 
   describe("promoteUserToAdmin", () => {
-    it("should set is_admin to 1 and user_type to ADMIN", async () => {
+    it("should set user_type to ADMIN", async () => {
        const user = await getOrCreateUser("promote@test.com", "Promote User", "pic", env);
-       expect(user.is_admin).toBe(0); // Default
        expect(user.user_type).toBe("STANDARD");
 
       await promoteUserToAdmin("promote@test.com", env);
 
       const updated = await getUserById(user.id, env);
-      expect(updated!.is_admin).toBe(1);
       expect(updated!.user_type).toBe("ADMIN");
     });
   });
@@ -211,8 +192,7 @@ describe("Session Management", () => {
       const user = {
         id: 1,
         email: "test@example.com",
-        is_admin: 1,
-        // ... other fields
+        user_type: 'ADMIN',
       } as User;
 
       const response = userToResponse(user);

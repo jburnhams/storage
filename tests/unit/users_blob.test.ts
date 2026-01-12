@@ -1,5 +1,5 @@
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { createExecutionContext, waitOnExecutionContext, env } from 'cloudflare:test';
 import { applyD1Migrations } from 'cloudflare:test';
 import worker from '../../src/worker';
