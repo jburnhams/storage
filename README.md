@@ -92,7 +92,7 @@ Group entries into named collections.
 ### Bulk Operations (Collection)
 *   **Upload ZIP**: `POST /api/collections/:id/upload` (Multipart with `file` field containing a ZIP). Extracts and creates/updates entries in the collection.
 *   **Download ZIP**: `GET /api/collections/:id/download`. Returns a ZIP file containing all entries in the collection.
-*   **Export JSON**: `GET /api/collections/:id/export`. Returns a JSON manifest of all entries, including download URLs.
+*   **Export JSON**: `GET /api/collections/:id`. Returns a JSON manifest of all entries, including download URLs.
 
 ---
 

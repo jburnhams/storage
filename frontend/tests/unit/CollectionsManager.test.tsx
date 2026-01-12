@@ -57,7 +57,7 @@ describe("CollectionsManager", () => {
         fireEvent.click(shareBtn);
 
         // Verify clipboard URL
-        const expectedUrl = `${window.location.origin}/api/collections/123/export?secret=secret-123`;
+        const expectedUrl = `${window.location.origin}/api/collections/123?secret=secret-123`;
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expectedUrl);
         expect(window.alert).toHaveBeenCalledWith("Public JSON link copied!");
     });
