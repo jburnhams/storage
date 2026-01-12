@@ -16,13 +16,11 @@ export function UsersTab({ user }: UsersTabProps) {
     email: string;
     user_type: UserType;
     profile_picture: string;
-    password?: string;
   }>({
     name: "",
     email: "",
     user_type: 'STANDARD',
     profile_picture: "",
-    password: "",
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -105,7 +103,6 @@ export function UsersTab({ user }: UsersTabProps) {
       email: "",
       user_type: 'STANDARD',
       profile_picture: "",
-      password: "",
     });
     setIsModalOpen(true);
   };
@@ -118,7 +115,6 @@ export function UsersTab({ user }: UsersTabProps) {
       email: user.email,
       user_type: user.user_type || 'STANDARD',
       profile_picture: user.profile_picture || "",
-      password: "",
     });
     setIsModalOpen(true);
   };
@@ -156,9 +152,6 @@ export function UsersTab({ user }: UsersTabProps) {
         formDataObj.append("name", formData.name);
         formDataObj.append("email", formData.email);
         formDataObj.append("user_type", formData.user_type);
-        if (formData.password) {
-           formDataObj.append("password", formData.password);
-        }
         if (formData.profile_picture) {
           formDataObj.append("profile_picture", formData.profile_picture);
         }
@@ -167,12 +160,7 @@ export function UsersTab({ user }: UsersTabProps) {
         // Do not set Content-Type header, let browser set it with boundary
       } else {
         headers["Content-Type"] = "application/json";
-        // Remove password if empty (so we don't overwrite with empty string on edit)
-        const dataToSend = { ...formData };
-        if (!dataToSend.password) {
-            delete dataToSend.password;
-        }
-        body = JSON.stringify(dataToSend);
+        body = JSON.stringify(formData);
       }
 
       const res = await fetch(url, {
@@ -291,16 +279,6 @@ export function UsersTab({ user }: UsersTabProps) {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
-                  style={{ width: '100%', padding: '0.5rem' }}
-                />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem' }}>Password {editingUser && '(Leave blank to keep current)'}</label>
-                <input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder={editingUser ? "New Password" : "Password"}
                   style={{ width: '100%', padding: '0.5rem' }}
                 />
               </div>
