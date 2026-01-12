@@ -343,13 +343,15 @@ export async function createUser(
     const randomPassword = generateSalt(32);
     hash = await hashPassword(randomPassword, salt);
   }
+  // Convert ArrayBuffer to regular array for D1 compatibility in tests
+  const blobToStore = profilePicBlob ? Array.from(new Uint8Array(profilePicBlob)) : null;
 
   const result = await env.DB.prepare(
     `INSERT INTO users (email, name, profile_picture, profile_pic_blob, user_type, is_admin, password_salt, password_hash, created_at, updated_at, last_login_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`
   )
-    .bind(request.email, request.name, profilePicture, profilePicBlob, userType, isAdmin, salt, hash, now, now, null)
+    .bind(request.email, request.name, profilePicture, blobToStore, userType, isAdmin, salt, hash, now, now, null)
     .first<User>();
 
   if (!result) {
