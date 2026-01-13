@@ -1,35 +1,42 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { unstable_dev } from 'wrangler';
-import type { UnstableDevWorker } from 'wrangler';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { Miniflare } from 'miniflare';
+import {
+  createMiniflareInstance,
+  seedTestData,
+  cleanDatabase,
+  bundleWorker,
+} from './setup';
 
-describe('Auth Integration', () => {
-  let worker: UnstableDevWorker;
+describe('Auth Basic Integration', () => {
+  let mf: Miniflare;
+  let db: D1Database;
+  let workerScript: string;
+  let persistPath: string;
+
+  beforeAll(async () => {
+    workerScript = await bundleWorker();
+
+    const result = await createMiniflareInstance({
+      script: workerScript,
+    });
+    mf = result.mf;
+    persistPath = result.persistPath;
+
+    db = await mf.getD1Database("DB");
+  });
 
   beforeEach(async () => {
-    worker = await unstable_dev('src/worker.ts', {
-      experimental: { disableExperimentalWarning: true },
-      config: 'wrangler.toml',
-      testScheduled: false,
-    });
+    db = await mf.getD1Database("DB");
+    await cleanDatabase(db);
+    await seedTestData(db);
   });
 
-  afterEach(async () => {
-    await worker.stop();
+  afterAll(async () => {
+    if (mf) await mf.dispose();
   });
 
-  it('should allow login with created user and password', async () => {
-    // 1. Create a user via Admin API (simulated or direct DB if possible, but API is better)
-    // Actually, we can't easily create an admin session without already having one.
-    // So we'll rely on the fact that we can hit the signup/create logic if we mock it,
-    // or we can use the `getOrCreateUser` logic if we could trigger it.
-    //
-    // Better approach for integration test:
-    // We need to bypass auth to create a user, or use a "seed" strategy.
-    // But since this is a real integration test against the worker, we might need a backdoor or just unit test the route handler logic.
-    //
-    // However, I can test the FAIL case easily.
-
-    const res = await worker.fetch('/auth/login', {
+  it('should return 401 for nonexistent user', async () => {
+    const res = await mf.dispatchFetch('http://localhost/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -39,5 +46,8 @@ describe('Auth Integration', () => {
     });
 
     expect(res.status).toBe(401);
+    const body = await res.json() as any;
+    expect(body.error).toBe('INVALID_CREDENTIALS');
   });
 });
+
