@@ -34,7 +34,9 @@ const mockUser: User = {
   email: "test@example.com",
   name: "Test User",
   profile_picture: null,
-  is_admin: 0,
+  user_type: "STANDARD",
+  password_salt: null,
+  password_hash: null,
   created_at: "now",
   updated_at: "now",
   last_login_at: null

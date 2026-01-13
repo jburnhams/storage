@@ -18,7 +18,7 @@ describe('JSON Entry Routes', () => {
 
         // Seed user
         const userResult = await env.DB.prepare(
-            "INSERT INTO users (email, name, is_admin) VALUES ('test@example.com', 'Test User', 1) RETURNING id"
+            "INSERT INTO users (email, name, user_type) VALUES ('test@example.com', 'Test User', 'ADMIN') RETURNING id"
         ).first<any>();
         userId = userResult.id;
 

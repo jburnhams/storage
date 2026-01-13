@@ -44,8 +44,8 @@ describe('Session Logic - Password', () => {
       })
       .mockReturnValueOnce({ // for INSERT
         bind: vi.fn().mockImplementation((...args) => {
-           // args: email, name, profile_picture, profile_pic_blob, user_type, is_admin, salt, hash, ...
-           const [email, name, pp, ppb, type, admin, salt, hash] = args;
+           // args: email, name, profile_picture, profile_pic_blob, user_type, salt, hash, ...
+           const [email, name, pp, ppb, type, salt, hash] = args;
            expect(salt).toBeDefined();
            expect(hash).toBeDefined();
            expect(salt).toHaveLength(32); // 16 bytes hex

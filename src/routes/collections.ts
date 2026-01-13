@@ -416,7 +416,7 @@ export function registerCollectionRoutes(app: AppType) {
       isAuthorized = true;
       // We can create a mock user object representing the owner of the collection for listing purposes,
       // since we are authorized to see this collection's content.
-      viewingUser = { id: collection.user_id, is_admin: 0 } as User;
+      viewingUser = { id: collection.user_id, user_type: 'STANDARD' } as User;
     }
 
     if (!isAuthorized) {

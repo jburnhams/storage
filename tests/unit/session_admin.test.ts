@@ -24,11 +24,11 @@ describe("Session Management (Admin)", () => {
             env
         );
 
-        expect(user.is_admin).toBe(1);
+        expect(user.user_type).toBe('ADMIN');
 
         // Verify in DB
         const saved = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(adminEmail).first();
-        expect(saved.is_admin).toBe(1);
+        expect(saved.user_type).toBe('ADMIN');
 
       } finally {
         // Cleanup

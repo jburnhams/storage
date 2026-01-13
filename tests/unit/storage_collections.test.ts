@@ -18,7 +18,9 @@ const mockUser: User = {
     email: "test@example.com",
     name: "Test User",
     profile_picture: null,
-    is_admin: 0,
+    user_type: "STANDARD",
+    password_salt: null,
+    password_hash: null,
     created_at: "now",
     updated_at: "now",
     last_login_at: null
@@ -27,7 +29,7 @@ const mockUser: User = {
 describe("Collection Storage Logic", () => {
     beforeEach(async () => {
         await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
-        await env.DB.prepare("INSERT INTO users (id, email, name, is_admin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(1, "test@example.com", "Test User", 0, "now", "now").run();
+        await env.DB.prepare("INSERT INTO users (id, email, name, user_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(1, "test@example.com", "Test User", "STANDARD", "now", "now").run();
     });
 
     it("should create a collection", async () => {
