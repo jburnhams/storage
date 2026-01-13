@@ -407,9 +407,11 @@ export async function getAllSessions(env: Env): Promise<SessionResponse[]> {
        u.last_login_at as user_last_login_at
      FROM sessions s
      JOIN users u ON s.user_id = u.id
-     WHERE s.expires_at > datetime('now')
+     WHERE s.expires_at > ?
      ORDER BY s.created_at DESC`
-  ).all<SessionWithUser>();
+  )
+    .bind(new Date().toISOString())
+    .all<SessionWithUser>();
 
   return (result.results || []).map((row) => ({
     id: row.session_id,

@@ -35,17 +35,19 @@ describe('User Management API', () => {
 
     // Create sessions
     adminSessionId = 'admin-session';
+    const expires = new Date(Date.now() + 3600000).toISOString();
+
     await env.DB.prepare(
       `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
     )
-      .bind(adminSessionId, adminUser.id, new Date(Date.now() + 3600000).toISOString())
+      .bind(adminSessionId, adminUser.id, expires)
       .run();
 
     userSessionId = 'user-session';
     await env.DB.prepare(
       `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
     )
-      .bind(userSessionId, regularUser.id, new Date(Date.now() + 3600000).toISOString())
+      .bind(userSessionId, regularUser.id, expires)
       .run();
   });
 
