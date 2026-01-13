@@ -23,9 +23,10 @@ describe('JSON Entry Routes', () => {
         userId = userResult.id;
 
         // Seed session
+        const expires = new Date(Date.now() + 3600000).toISOString();
         const sessionResult = await env.DB.prepare(
-            "INSERT INTO sessions (id, user_id, expires_at) VALUES ('session123', ?, datetime('now', '+1 hour')) RETURNING id"
-        ).bind(userId).first<any>();
+            "INSERT INTO sessions (id, user_id, expires_at) VALUES ('session123', ?, ?) RETURNING id"
+        ).bind(userId, expires).first<any>();
         sessionId = sessionResult.id;
 
         cookie = `storage_session=${sessionId}`;
