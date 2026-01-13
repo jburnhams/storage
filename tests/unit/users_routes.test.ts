@@ -43,23 +43,23 @@ describe('User Detail API (GET /api/users/:id)', () => {
     // Create sessions
     adminSessionId = 'admin-session';
     await env.DB.prepare(
-      `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 hour'))`
+      `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
     )
-      .bind(adminSessionId, adminUser.id)
+      .bind(adminSessionId, adminUser.id, new Date(Date.now() + 3600000).toISOString())
       .run();
 
     userSessionId = 'user-session';
     await env.DB.prepare(
-      `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 hour'))`
+      `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
     )
-      .bind(userSessionId, regularUser.id)
+      .bind(userSessionId, regularUser.id, new Date(Date.now() + 3600000).toISOString())
       .run();
 
     otherUserSessionId = 'other-session';
     await env.DB.prepare(
-      `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 hour'))`
+      `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
     )
-      .bind(otherUserSessionId, otherUser.id)
+      .bind(otherUserSessionId, otherUser.id, new Date(Date.now() + 3600000).toISOString())
       .run();
   });
 

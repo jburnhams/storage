@@ -55,10 +55,11 @@ export async function getSession(
   sessionId: string,
   env: Env
 ): Promise<Session | null> {
+  const now = new Date().toISOString();
   const result = await env.DB.prepare(
-    `SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')`
+    `SELECT * FROM sessions WHERE id = ? AND expires_at > ?`
   )
-    .bind(sessionId)
+    .bind(sessionId, now)
     .first<Session>();
 
   return result;
@@ -71,10 +72,11 @@ export async function updateSessionLastUsed(
   sessionId: string,
   env: Env
 ): Promise<void> {
+  const now = new Date().toISOString();
   await env.DB.prepare(
-    `UPDATE sessions SET last_used_at = datetime('now') WHERE id = ?`
+    `UPDATE sessions SET last_used_at = ? WHERE id = ?`
   )
-    .bind(sessionId)
+    .bind(now, sessionId)
     .run();
 }
 
@@ -94,9 +96,12 @@ export async function deleteSession(
  * Delete all expired sessions (cleanup)
  */
 export async function deleteExpiredSessions(env: Env): Promise<void> {
+  const now = new Date().toISOString();
   await env.DB.prepare(
-    `DELETE FROM sessions WHERE expires_at <= datetime('now')`
-  ).run();
+    `DELETE FROM sessions WHERE expires_at <= ?`
+  )
+    .bind(now)
+    .run();
 }
 
 /**
