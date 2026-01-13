@@ -72,10 +72,11 @@ export async function updateSessionLastUsed(
   sessionId: string,
   env: Env
 ): Promise<void> {
+  const now = new Date().toISOString();
   await env.DB.prepare(
-    `UPDATE sessions SET last_used_at = datetime('now') WHERE id = ?`
+    `UPDATE sessions SET last_used_at = ? WHERE id = ?`
   )
-    .bind(sessionId)
+    .bind(now, sessionId)
     .run();
 }
 
