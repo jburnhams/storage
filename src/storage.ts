@@ -346,8 +346,14 @@ export async function listEntries(
   const params: any[] = [];
 
   if (!isUserAdmin(user)) {
-    query += " AND k.user_id = ?";
-    params.push(user.id);
+    // Check for ownership OR shared access (either direct entry access OR collection access)
+    // We use a subquery or OR condition
+    query += ` AND (
+        k.user_id = ?
+        OR k.id IN (SELECT key_value_entry_id FROM storage_access WHERE user_id = ? AND key_value_entry_id IS NOT NULL)
+        OR (k.collection_id IS NOT NULL AND k.collection_id IN (SELECT collection_id FROM storage_access WHERE user_id = ? AND collection_id IS NOT NULL))
+    )`;
+    params.push(user.id, user.id, user.id);
   }
 
   // Filter by Collection
@@ -425,9 +431,14 @@ export async function getCollectionBySecret(env: Env, secret: string): Promise<K
 }
 
 export async function listCollections(env: Env, userId: number): Promise<KeyValueCollectionResponse[]> {
-  const { results } = await env.DB.prepare(
-    "SELECT * FROM key_value_collections WHERE user_id = ? ORDER BY created_at DESC"
-  ).bind(userId).all<KeyValueCollection>();
+  const query = `
+    SELECT DISTINCT c.*
+    FROM key_value_collections c
+    LEFT JOIN storage_access sa ON c.id = sa.collection_id
+    WHERE c.user_id = ? OR (sa.user_id = ? AND sa.collection_id IS NOT NULL)
+    ORDER BY c.created_at DESC
+  `;
+  const { results } = await env.DB.prepare(query).bind(userId, userId).all<KeyValueCollection>();
   return results;
 }
 

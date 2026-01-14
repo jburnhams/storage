@@ -53,7 +53,7 @@ describe("CollectionsManager", () => {
         });
 
         // Find Share Link button
-        const shareBtn = screen.getByText("Share Link");
+        const shareBtn = screen.getByText("Public Link");
         fireEvent.click(shareBtn);
 
         // Verify clipboard URL

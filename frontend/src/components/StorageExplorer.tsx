@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { UserResponse } from "../types";
+import { AccessModal } from "./AccessModal";
 
 interface KeyValueEntryResponse {
   id: number;
@@ -50,6 +51,9 @@ export function StorageExplorer({ user, collection }: Props) {
 
     // For Zip Upload Modal (Collection Mode)
     const [isUploadZipOpen, setIsUploadZipOpen] = useState(false);
+
+    // Access Modal
+    const [accessModalTarget, setAccessModalTarget] = useState<{type: 'collection' | 'entry', id: number, name?: string} | null>(null);
 
     const fetchEntries = () => {
         setLoading(true);
@@ -282,7 +286,7 @@ export function StorageExplorer({ user, collection }: Props) {
                     {collection && (
                         <>
                              <button onClick={() => setIsUploadZipOpen(true)}>Upload ZIP</button>
-                             {/* Collection specific full download/export already in CollectionsManager, but could add here too if needed */}
+                             <button onClick={() => setAccessModalTarget({ type: 'collection', id: collection.id, name: collection.name })}>Access</button>
                         </>
                     )}
 
@@ -353,11 +357,12 @@ export function StorageExplorer({ user, collection }: Props) {
                                         <td>
                                             <button onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }}>Edit</button>
                                             <button onClick={() => handleDelete([entry.id])}>Delete</button>
+                                            <button onClick={() => setAccessModalTarget({ type: 'entry', id: entry.id, name: entry.key })}>Access</button>
                                             <button onClick={() => {
                                                 const link = `${window.location.origin}/api/public/share?key=${encodeURIComponent(entry.key)}&secret=${entry.secret}`;
                                                 navigator.clipboard.writeText(link);
                                                 alert("Link copied!");
-                                            }}>Share</button>
+                                            }}>Public Link</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -385,6 +390,15 @@ export function StorageExplorer({ user, collection }: Props) {
                     collectionId={collection.id}
                     onClose={() => setIsUploadZipOpen(false)}
                     onComplete={() => { setIsUploadZipOpen(false); fetchEntries(); }}
+                />
+            )}
+
+            {accessModalTarget && (
+                <AccessModal
+                    type={accessModalTarget.type}
+                    id={accessModalTarget.id}
+                    resourceName={accessModalTarget.name}
+                    onClose={() => setAccessModalTarget(null)}
                 />
             )}
         </div>

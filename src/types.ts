@@ -70,6 +70,23 @@ export interface KeyValueEntryJoined extends KeyValueEntry {
     size: number;
 }
 
+export type AccessLevel = 'READONLY' | 'READWRITE' | 'ADMIN';
+
+export interface StorageAccess {
+    id: number;
+    user_id: number;
+    collection_id: number | null;
+    key_value_entry_id: number | null;
+    access_level: AccessLevel;
+    created_at: string;
+}
+
+export interface StorageAccessJoined extends StorageAccess {
+    user_email: string;
+    user_name: string;
+    user_avatar: string | null;
+}
+
 // ===== API Response Types =====
 
 export interface UserResponse {

@@ -141,6 +141,34 @@ export const UpdateEntryRequestSchema = z.object({
   metadata: z.string().optional(),
 });
 
+// ===== Access Schemas =====
+
+export const AccessLevelSchema = z.enum(['READONLY', 'READWRITE', 'ADMIN']);
+
+export const StorageAccessSchema = z.object({
+  id: z.number(),
+  user_id: z.number(),
+  collection_id: z.number().nullable(),
+  key_value_entry_id: z.number().nullable(),
+  access_level: AccessLevelSchema,
+  created_at: z.string(),
+  user_email: z.string().optional(),
+  user_name: z.string().optional(),
+  user_avatar: z.string().nullable().optional(),
+});
+
+export const AccessListResponseSchema = z.array(StorageAccessSchema);
+
+export const GrantAccessRequestSchema = z.object({
+  user_id: z.number(),
+  access_level: AccessLevelSchema,
+});
+
+export const RevokeAccessRequestSchema = z.object({
+  user_id: z.number(),
+});
+
+
 // ===== Query Parameter Schemas =====
 
 export const ListEntriesQuerySchema = z.object({

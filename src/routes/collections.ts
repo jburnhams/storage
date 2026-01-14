@@ -13,6 +13,7 @@ import {
   getEntryById,
 } from '../storage';
 import { getUserById, isUserAdmin } from '../session';
+import { checkAccess, canView, canEdit, canDelete } from '../permissions';
 import JSZip from 'jszip';
 import {
   CollectionResponseSchema,
@@ -405,8 +406,9 @@ export function registerCollectionRoutes(app: AppType) {
       const user = await getUserById(session.user_id, c.env);
       if (user) {
         viewingUser = user;
-        if (collection.user_id === user.id || isUserAdmin(user)) {
-          isAuthorized = true;
+        const level = await checkAccess(c.env, user, 'collection', id);
+        if (canView(level)) {
+            isAuthorized = true;
         }
       }
     }
@@ -493,7 +495,8 @@ export function registerCollectionRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
-    if (collection.user_id !== user.id && !isUserAdmin(user)) {
+    const level = await checkAccess(c.env, user, 'collection', id);
+    if (!canEdit(level)) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
@@ -516,7 +519,8 @@ export function registerCollectionRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
-    if (collection.user_id !== user.id && !isUserAdmin(user)) {
+    const level = await checkAccess(c.env, user, 'collection', id);
+    if (!canDelete(level)) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
@@ -539,7 +543,8 @@ export function registerCollectionRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Collection not found' }, 404);
     }
 
-    if (collection.user_id !== user.id && !isUserAdmin(user)) {
+    const level = await checkAccess(c.env, user, 'collection', id);
+    if (!canEdit(level)) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
