@@ -52,6 +52,20 @@ export interface KeyValueEntryResponse {
   origin: string | null;
 }
 
+export type AccessLevel = 'READONLY' | 'READWRITE' | 'ADMIN';
+
+export interface StorageAccess {
+  id: number;
+  user_id: number;
+  collection_id: number | null;
+  key_value_entry_id: number | null;
+  access_level: AccessLevel;
+  created_at: string;
+  user_email?: string;
+  user_name?: string;
+  user_avatar?: string | null;
+}
+
 export interface YoutubeChannel {
   youtube_id: string;
   title: string;

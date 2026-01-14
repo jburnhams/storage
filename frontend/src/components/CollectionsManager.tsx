@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { UserResponse } from "../types";
 import { StorageExplorer } from "./StorageExplorer";
+import { AccessModal } from "./AccessModal";
 
 interface Collection {
     id: number;
@@ -22,6 +23,7 @@ export function CollectionsManager({ user }: Props) {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCollection, setEditingCollection] = useState<Collection | null>(null);
+    const [accessModalTarget, setAccessModalTarget] = useState<Collection | null>(null);
 
     // View Mode
     const [viewingCollection, setViewingCollection] = useState<Collection | null>(null);
@@ -122,11 +124,12 @@ export function CollectionsManager({ user }: Props) {
                                         <button onClick={() => handleDownloadZip(c.id, c.name)}>Download ZIP</button>
                                         <button onClick={() => handleExportJson(c.id)}>Export JSON</button>
                                         <button onClick={() => handleDelete(c.id)}>Delete</button>
+                                        <button onClick={() => setAccessModalTarget(c)}>Access</button>
                                         <button onClick={() => {
                                             const link = `${window.location.origin}/api/collections/${c.id}?secret=${c.secret}`;
                                             navigator.clipboard.writeText(link);
                                             alert("Public JSON link copied!");
-                                        }}>Share Link</button>
+                                        }}>Public Link</button>
                                     </td>
                                 </tr>
                             ))}
@@ -143,6 +146,15 @@ export function CollectionsManager({ user }: Props) {
                     collection={editingCollection}
                     onClose={() => setIsModalOpen(false)}
                     onSave={() => { setIsModalOpen(false); fetchCollections(); }}
+                />
+            )}
+
+            {accessModalTarget && (
+                <AccessModal
+                    type="collection"
+                    id={accessModalTarget.id}
+                    resourceName={accessModalTarget.name}
+                    onClose={() => setAccessModalTarget(null)}
                 />
             )}
         </div>

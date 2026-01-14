@@ -8,6 +8,7 @@ import { registerUserRoutes } from './routes/users';
 import { registerEntryRoutes } from './routes/entries';
 import { registerEntryJsonRoutes } from './routes/entries_json';
 import { registerCollectionRoutes } from './routes/collections';
+import { registerAccessRoutes } from './routes/access';
 import { registerBulkRoutes, registerPublicRoutes } from './routes/bulk';
 import { registerYoutubeRoutes } from './routes/youtube';
 import { renderFrontend, serveAsset } from './frontend';
@@ -58,6 +59,7 @@ export function createApp() {
   registerEntryRoutes(app);
   registerEntryJsonRoutes(app);
   registerCollectionRoutes(app);
+  registerAccessRoutes(app);
   registerBulkRoutes(app);
   registerPublicRoutes(app);
   registerYoutubeRoutes(app);

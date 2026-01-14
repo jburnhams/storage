@@ -13,6 +13,7 @@ import {
   getEntryInCollection,
 } from '../storage';
 import { getUserById, isUserAdmin } from '../session';
+import { checkAccess, canView, canEdit, canDelete } from '../permissions';
 import {
   EntryResponseSchema,
   EntryListResponseSchema,
@@ -381,7 +382,8 @@ export function registerEntryRoutes(app: AppType) {
         const existing = await getEntryInCollection(c.env, key, collectionId);
         if (existing) {
           // Check permission to update existing entry
-          if (!isUserAdmin(user) && existing.user_id !== user.id) {
+          const level = await checkAccess(c.env, user, 'entry', existing.id);
+          if (!canEdit(level)) {
             return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
           }
 
@@ -402,6 +404,14 @@ export function registerEntryRoutes(app: AppType) {
           }
           return c.json(entryToResponse(updated));
         }
+      }
+
+      // If we are creating in a collection, check WRITE access on collection
+      if (collectionId) {
+          const colLevel = await checkAccess(c.env, user, 'collection', collectionId);
+          if (!canEdit(colLevel)) {
+              return c.json({ error: 'FORBIDDEN', message: 'Access denied to collection' }, 403);
+          }
       }
 
       const entry = await createEntry(
@@ -441,7 +451,8 @@ export function registerEntryRoutes(app: AppType) {
     }
 
     // Access Control
-    if (!isUserAdmin(user) && entry.user_id !== user.id) {
+    const level = await checkAccess(c.env, user, 'entry', id);
+    if (!canView(level)) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
@@ -474,7 +485,8 @@ export function registerEntryRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
-    if (!isUserAdmin(user) && existing.user_id !== user.id) {
+    const level = await checkAccess(c.env, user, 'entry', id);
+    if (!canEdit(level)) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
@@ -519,6 +531,14 @@ export function registerEntryRoutes(app: AppType) {
             return c.json({ error: 'INVALID_REQUEST', message: 'Invalid Collection ID' }, 400);
           }
         }
+      }
+
+      // If moving to a collection, check permissions on new collection
+      if (collectionId !== undefined && collectionId !== null) {
+          const colLevel = await checkAccess(c.env, user, 'collection', collectionId);
+          if (!canEdit(colLevel)) {
+               return c.json({ error: 'FORBIDDEN', message: 'Access denied to new collection' }, 403);
+          }
       }
 
       let blobValue: ArrayBuffer | null = null;
@@ -627,7 +647,8 @@ export function registerEntryRoutes(app: AppType) {
       return c.json({ error: 'NOT_FOUND', message: 'Entry not found' }, 404);
     }
 
-    if (!isUserAdmin(user) && existing.user_id !== user.id) {
+    const level = await checkAccess(c.env, user, 'entry', id);
+    if (!canDelete(level)) {
       return c.json({ error: 'FORBIDDEN', message: 'Access denied' }, 403);
     }
 
