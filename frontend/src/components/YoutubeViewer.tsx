@@ -45,6 +45,9 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
     const [syncProgress, setSyncProgress] = useState<YoutubeSyncResponse | null>(null);
     const [syncRange, setSyncRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
     const [totalFetched, setTotalFetched] = useState(0);
+    const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
+    const [bulkSyncing, setBulkSyncing] = useState(false);
+    const [bulkSyncStatus, setBulkSyncStatus] = useState<{ current: string; progress: string } | null>(null);
 
     // Player State
     const playerRef = useRef<HTMLDivElement>(null);
@@ -331,6 +334,62 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
         );
     };
 
+    const handleBulkSync = async () => {
+        if (selectedChannels.size === 0) return;
+
+        setBulkSyncing(true);
+        setBulkSyncStatus({ current: '', progress: `Starting sync for ${selectedChannels.size} channels...` });
+
+        const channelsToSync = channels.filter(c => selectedChannels.has(c.youtube_id));
+        let processed = 0;
+
+        for (const channel of channelsToSync) {
+            setBulkSyncStatus({ current: channel.title, progress: `Syncing ${processed + 1}/${channelsToSync.length}` });
+
+            // Reuse sync logic but for specific channel
+            let channelComplete = false;
+            let safetyLimit = 100;
+
+            try {
+                while (!channelComplete && safetyLimit > 0) {
+                    safetyLimit--;
+                    const res = await fetch(`/api/youtube/channel/${channel.youtube_id}/sync`, { method: 'POST' });
+                    if (!res.ok) break; // Skip on error
+
+                    const progress = await res.json() as YoutubeSyncResponse;
+                    channelComplete = progress.is_complete;
+                }
+            } catch (e) {
+                console.error(`Failed to sync channel ${channel.title}`, e);
+            }
+            processed++;
+        }
+
+        setBulkSyncing(false);
+        setBulkSyncStatus(null);
+        setSelectedChannels(new Set()); // Clear selection
+        fetchChannels(); // Refresh data
+        alert('Bulk sync completed!');
+    };
+
+    const toggleChannelSelection = (id: string) => {
+        const newSelection = new Set(selectedChannels);
+        if (newSelection.has(id)) {
+            newSelection.delete(id);
+        } else {
+            newSelection.add(id);
+        }
+        setSelectedChannels(newSelection);
+    };
+
+    const handleSelectAll = () => {
+        setSelectedChannels(new Set(channels.map(c => c.youtube_id)));
+    };
+
+    const handleDeselectAll = () => {
+        setSelectedChannels(new Set());
+    };
+
     const handleDeleteChannel = async () => {
         if (!singleData || !('custom_url' in singleData)) return;
         const channel = singleData as YoutubeChannel;
@@ -604,9 +663,14 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
 
         return (
             <div style={{ marginTop: '2rem' }}>
+                <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
+                    <button onClick={handleSelectAll}>Select All</button>
+                    <button onClick={handleDeselectAll}>Deselect All</button>
+                </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr>
+                            <th style={{ width: '40px', padding: '0.5rem', borderBottom: '1px solid var(--color-border)' }}></th>
                             <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid var(--color-border)' }}>Channel</th>
                             <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--color-border)' }}>Videos</th>
                         </tr>
@@ -615,11 +679,20 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                         {channels.map((channel: any) => (
                             <tr
                                 key={channel.youtube_id}
-                                onClick={() => fetchChannelDetail(channel.youtube_id)}
                                 style={{ cursor: 'pointer', borderBottom: '1px solid var(--color-border-dim)' }}
                                 className="hover:bg-gray-100 dark:hover:bg-gray-800"
                             >
-                                <td style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <td style={{ padding: '0.5rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedChannels.has(channel.youtube_id)}
+                                        onChange={(e) => { e.stopPropagation(); toggleChannelSelection(channel.youtube_id); }}
+                                    />
+                                </td>
+                                <td
+                                    onClick={() => fetchChannelDetail(channel.youtube_id)}
+                                    style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}
+                                >
                                     <img
                                         src={channel.thumbnail_url}
                                         alt={channel.title}
@@ -634,6 +707,21 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                         ))}
                     </tbody>
                 </table>
+                {selectedChannels.size > 0 && (
+                    <div style={{ position: 'sticky', bottom: '1rem', background: 'var(--color-bg)', padding: '1rem', borderTop: '1px solid var(--color-border)', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 -2px 10px rgba(0,0,0,0.1)' }}>
+                        <div>Selected: {selectedChannels.size}</div>
+                        {bulkSyncing ? (
+                            <div>
+                                <strong>{bulkSyncStatus?.progress}</strong>
+                                {bulkSyncStatus?.current && <div style={{ fontSize: '0.8rem' }}>Currently syncing: {bulkSyncStatus.current}</div>}
+                            </div>
+                        ) : (
+                            <button onClick={handleBulkSync} style={{ background: 'var(--color-primary)', color: 'white', padding: '0.5rem 1rem', border: 'none', borderRadius: '4px' }}>
+                                Sync Selected ({selectedChannels.size})
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
         );
     };

@@ -38,8 +38,8 @@ describe('YoutubeViewer', () => {
     };
 
     it('switches between ID and Search modes', async () => {
-         // Mock for the channel fetch that happens on mode switch
-         globalFetch.mockResolvedValue({
+        // Mock for the channel fetch that happens on mode switch
+        globalFetch.mockResolvedValue({
             ok: true,
             json: async () => mockChannels
         });
@@ -63,13 +63,13 @@ describe('YoutubeViewer', () => {
         globalFetch
             .mockImplementation((url) => {
                 if (url.toString().includes('/channels')) {
-                     return Promise.resolve({
+                    return Promise.resolve({
                         ok: true,
                         json: async () => mockChannels
-                     });
+                    });
                 }
                 if (url.toString().includes('/videos')) {
-                     return Promise.resolve({
+                    return Promise.resolve({
                         ok: true,
                         json: async () => ({
                             videos: [mockVideo],
@@ -107,22 +107,22 @@ describe('YoutubeViewer', () => {
     it('navigates to video detail when clicking search result', async () => {
         // Mock responses
         globalFetch.mockImplementation((url) => {
-             if (url.toString().includes('/channels')) {
-                 return Promise.resolve({ ok: true, json: async () => mockChannels });
-             }
-             if (url.toString().includes('/videos')) {
-                 return Promise.resolve({
+            if (url.toString().includes('/channels')) {
+                return Promise.resolve({ ok: true, json: async () => mockChannels });
+            }
+            if (url.toString().includes('/videos')) {
+                return Promise.resolve({
                     ok: true,
                     json: async () => ({ videos: [mockVideo], limit: 10, offset: 0 })
                 });
-             }
-             if (url.toString().includes('/api/youtube/video/vid1')) {
-                 return Promise.resolve({
-                     ok: true,
-                     json: async () => mockVideo
-                 });
-             }
-             return Promise.reject(new Error('Unknown URL: ' + url));
+            }
+            if (url.toString().includes('/api/youtube/video/vid1')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => mockVideo
+                });
+            }
+            return Promise.reject(new Error('Unknown URL: ' + url));
         });
 
         render(<YoutubeViewer />);
@@ -144,20 +144,20 @@ describe('YoutubeViewer', () => {
     });
 
     it('navigates to channel videos from channel detail', async () => {
-         const mockChannel = {
-             youtube_id: 'chan1',
-             title: 'My Channel',
-             description: 'Desc',
-             custom_url: '@mychan',
-             thumbnail_url: 'thumb',
-             published_at: '2020-01-01',
-             raw_json: '{}',
-             video_count: 10,
-             subscriber_count: 1000,
-             view_count: 50000
-         };
+        const mockChannel = {
+            youtube_id: 'chan1',
+            title: 'My Channel',
+            description: 'Desc',
+            custom_url: '@mychan',
+            thumbnail_url: 'thumb',
+            published_at: '2020-01-01',
+            raw_json: '{}',
+            video_count: 10,
+            subscriber_count: 1000,
+            view_count: 50000
+        };
 
-         // Mock responses
+        // Mock responses
         globalFetch.mockImplementation((url) => {
             if (url.toString().includes('/api/youtube/channel/chan1')) {
                 return Promise.resolve({
@@ -171,9 +171,9 @@ describe('YoutubeViewer', () => {
                     json: async () => ({ videos: [mockVideo], limit: 10, offset: 0 })
                 });
             }
-             if (url.toString().includes('/channels')) {
-                 return Promise.resolve({ ok: true, json: async () => mockChannels });
-             }
+            if (url.toString().includes('/channels')) {
+                return Promise.resolve({ ok: true, json: async () => mockChannels });
+            }
             return Promise.reject(new Error('Unknown URL: ' + url));
         });
 
@@ -205,13 +205,13 @@ describe('YoutubeViewer', () => {
         globalFetch
             .mockImplementation((url) => {
                 if (url.toString().includes('/channels')) {
-                     return Promise.resolve({
+                    return Promise.resolve({
                         ok: true,
                         json: async () => mockChannels
-                     });
+                    });
                 }
                 if (url.toString().includes('/videos')) {
-                     return Promise.resolve({
+                    return Promise.resolve({
                         ok: true,
                         json: async () => ({
                             videos: [mockVideo],
@@ -244,16 +244,16 @@ describe('YoutubeViewer', () => {
     });
 
     it('handles pagination', async () => {
-         globalFetch
+        globalFetch
             .mockImplementation((url) => {
                 if (url.toString().includes('/channels')) {
-                     return Promise.resolve({
+                    return Promise.resolve({
                         ok: true,
                         json: async () => mockChannels
-                     });
+                    });
                 }
                 if (url.toString().includes('/videos')) {
-                     return Promise.resolve({
+                    return Promise.resolve({
                         ok: true,
                         json: async () => ({
                             videos: Array(11).fill(null).map((_, i) => ({
@@ -319,6 +319,156 @@ describe('YoutubeViewer', () => {
                 cache: true,
                 sessionId: sessionId
             });
+        });
+    });
+
+    describe('Bulk Sync', () => {
+        it('displays checkboxes in Channels view', async () => {
+            globalFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockChannels
+            });
+
+            render(<YoutubeViewer />);
+            fireEvent.click(screen.getByText('Channels'));
+
+            await waitFor(() => expect(globalFetch).toHaveBeenCalledWith('/api/youtube/channels'));
+
+            const checkboxes = screen.getAllByRole('checkbox');
+            expect(checkboxes.length).toBe(2); // One per channel
+        });
+
+        it('allows selecting and deselecting channels', async () => {
+            globalFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockChannels
+            });
+
+            render(<YoutubeViewer />);
+            fireEvent.click(screen.getByText('Channels'));
+
+            await waitFor(() => screen.getByText('Test Channel 1'));
+
+            const checkboxes = screen.getAllByRole('checkbox');
+
+            // Select first channel
+            fireEvent.click(checkboxes[0]);
+            expect(checkboxes[0]).toBeChecked();
+
+            // Deselect first channel
+            fireEvent.click(checkboxes[0]);
+            expect(checkboxes[0]).not.toBeChecked();
+        });
+
+        it('Select All and Deselect All buttons work', async () => {
+            globalFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockChannels
+            });
+
+            render(<YoutubeViewer />);
+            fireEvent.click(screen.getByText('Channels'));
+
+            await waitFor(() => {
+                const elements = screen.getAllByText('Test Channel 1');
+                expect(elements.length).toBeGreaterThan(0);
+            });
+
+            const selectAllBtn = screen.getByText('Select All');
+            const deselectAllBtn = screen.getByText('Deselect All');
+            const checkboxes = screen.getAllByRole('checkbox');
+
+            // Select all
+            fireEvent.click(selectAllBtn);
+            checkboxes.forEach(cb => expect(cb).toBeChecked());
+
+            // Deselect all
+            fireEvent.click(deselectAllBtn);
+            checkboxes.forEach(cb => expect(cb).not.toBeChecked());
+        });
+
+        it('shows Sync Selected button when channels are selected', async () => {
+            globalFetch.mockResolvedValue({
+                ok: true,
+                json: async () => mockChannels
+            });
+
+            render(<YoutubeViewer />);
+            fireEvent.click(screen.getByText('Channels'));
+
+            await waitFor(() => {
+                const elements = screen.getAllByText('Test Channel 1');
+                expect(elements.length).toBeGreaterThan(0);
+            });
+
+            // Should not show sync button initially
+            expect(screen.queryByText(/Sync Selected/)).toBeNull();
+
+            // Select a channel
+            const checkboxes = screen.getAllByRole('checkbox');
+            fireEvent.click(checkboxes[0]);
+
+            // Should show sync button
+            await waitFor(() => screen.getByText('Sync Selected (1)'));
+        });
+
+        it('triggers bulk sync on clicking Sync Selected button', async () => {
+            const mockSyncResponse = {
+                count: 5,
+                range_start: '2023-01-01',
+                range_end: '2023-01-05',
+                sample_video: null,
+                is_complete: true,
+                total_stored_videos: 5
+            };
+
+            globalFetch.mockImplementation((url) => {
+                if (url.toString().includes('/channels')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => mockChannels
+                    });
+                }
+                if (url.toString().includes('/sync')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => mockSyncResponse
+                    });
+                }
+                return Promise.reject(new Error('Unknown URL: ' + url));
+            });
+
+            // Mock window.alert
+            const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => { });
+
+            render(<YoutubeViewer />);
+            fireEvent.click(screen.getByText('Channels'));
+
+            await waitFor(() => {
+                const elements = screen.getAllByText('Test Channel 1');
+                expect(elements.length).toBeGreaterThan(0);
+            });
+
+            // Select channels
+            const selectAllBtn = screen.getByText('Select All');
+            fireEvent.click(selectAllBtn);
+
+            // Click Sync Selected
+            const syncBtn = await screen.findByText('Sync Selected (2)');
+            fireEvent.click(syncBtn);
+
+            // Verify sync API calls were made
+            await waitFor(() => {
+                const syncCalls = globalFetch.mock.calls.filter(c =>
+                    c[0].toString().includes('/sync')
+                );
+                expect(syncCalls.length).toBeGreaterThan(0);
+            });
+
+            // Verify alert was shown
+            await waitFor(() => expect(alertMock).toHaveBeenCalledWith('Bulk sync completed!'));
+
+            alertMock.mockRestore();
         });
     });
 });
