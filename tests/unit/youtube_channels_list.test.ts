@@ -35,48 +35,48 @@ describe('YouTube Channels List Endpoint', () => {
   it('GET /api/youtube/channels returns list of channels with all fields', async () => {
     const mockChannels = [
       {
-          youtube_id: 'UC123',
-          title: 'Test Channel 1',
-          description: 'Desc 1',
-          custom_url: null,
-          thumbnail_url: 'http://thumb1',
-          published_at: '2023-01-01',
-          created_at: '2023-01-01',
-          updated_at: '2023-01-01',
-          upload_playlist_id: null,
-          last_sync_token: null,
-          view_count: 100,
-          subscriber_count: 10,
-          video_count: 5,
-          country: 'US',
-          best_thumbnail_url: null,
-          best_thumbnail_width: null,
-          best_thumbnail_height: null
+        youtube_id: 'UC123',
+        title: 'Test Channel 1',
+        description: 'Desc 1',
+        custom_url: null,
+        thumbnail_url: 'http://thumb1',
+        published_at: '2023-01-01',
+        created_at: '2023-01-01',
+        updated_at: '2023-01-01',
+        upload_playlist_id: null,
+        last_sync_token: null,
+        view_count: 100,
+        subscriber_count: 10,
+        video_count: 5,
+        country: 'US',
+        best_thumbnail_url: null,
+        best_thumbnail_width: null,
+        best_thumbnail_height: null
       },
       {
-          youtube_id: 'UC456',
-          title: 'Test Channel 2',
-          description: 'Desc 2',
-          custom_url: null,
-          thumbnail_url: 'http://thumb2',
-          published_at: '2023-01-02',
-          created_at: '2023-01-02',
-          updated_at: '2023-01-02',
-          upload_playlist_id: null,
-          last_sync_token: null,
-          view_count: 200,
-          subscriber_count: 20,
-          video_count: 10,
-          country: 'UK',
-          best_thumbnail_url: null,
-          best_thumbnail_width: null,
-          best_thumbnail_height: null
+        youtube_id: 'UC456',
+        title: 'Test Channel 2',
+        description: 'Desc 2',
+        custom_url: null,
+        thumbnail_url: 'http://thumb2',
+        published_at: '2023-01-02',
+        created_at: '2023-01-02',
+        updated_at: '2023-01-02',
+        upload_playlist_id: null,
+        last_sync_token: null,
+        view_count: 200,
+        subscriber_count: 20,
+        video_count: 10,
+        country: 'UK',
+        best_thumbnail_url: null,
+        best_thumbnail_width: null,
+        best_thumbnail_height: null
       }
     ];
     mockAll.mockResolvedValue({ results: mockChannels });
 
     const res = await app.request('/api/youtube/channels', {
-       method: 'GET',
+      method: 'GET',
     }, mockEnv as any);
 
     expect(res.status).toBe(200);
@@ -87,13 +87,13 @@ describe('YouTube Channels List Endpoint', () => {
     // Check if the query selects all fields except raw_json
     const expectedQuery = `
                 SELECT
-                    youtube_id, title, description, custom_url, thumbnail_url,
-                    published_at, created_at, updated_at,
-                    upload_playlist_id, last_sync_token,
-                    view_count, subscriber_count, video_count, country,
-                    best_thumbnail_url, best_thumbnail_width, best_thumbnail_height
-                FROM youtube_channels
-                ORDER BY title ASC
+                    c.youtube_id, c.title, c.description, c.custom_url, c.thumbnail_url,
+                    c.published_at, c.created_at, c.updated_at,
+                    c.upload_playlist_id, c.last_sync_token,
+                    c.view_count, c.subscriber_count, c.video_count, c.country,
+                    c.best_thumbnail_url, c.best_thumbnail_width, c.best_thumbnail_height
+                FROM youtube_channels c
+                ORDER BY c.title ASC
             `.trim().replace(/\s+/g, ' ');
 
     const actualQuery = mockPrepare.mock.calls[0][0].trim().replace(/\s+/g, ' ');
@@ -104,7 +104,7 @@ describe('YouTube Channels List Endpoint', () => {
     mockAll.mockRejectedValue(new Error('DB Fail'));
 
     const res = await app.request('/api/youtube/channels', {
-       method: 'GET',
+      method: 'GET',
     }, mockEnv as any);
 
     expect(res.status).toBe(500);

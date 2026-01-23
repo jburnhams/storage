@@ -21,7 +21,7 @@ interface YoutubeViewerProps {
 
 export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
     // Mode switcher
-    const [viewMode, setViewMode] = useState<'id' | 'search'>('id');
+    const [viewMode, setViewMode] = useState<'id' | 'search' | 'channels'>('id');
 
     // ID Fetch State
     const [id, setId] = useState('');
@@ -57,7 +57,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
             const initPlayer = async () => {
                 try {
                     if (playerInstance.current) {
-                       playerInstance.current.destroy();
+                        playerInstance.current.destroy();
                     }
 
                     // Ensure we have a unique ID for the container if not present
@@ -173,7 +173,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                     setChannels([]);
                 }
             } else {
-                 setChannels([]);
+                setChannels([]);
             }
         } catch (e) {
             console.error('Failed to fetch channels', e);
@@ -294,7 +294,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
             setError(`Sync error: ${err.message}`);
         } finally {
             setSyncing(false);
-             try {
+            try {
                 const res = await fetch(`/api/youtube/channel/${singleData.youtube_id}`);
                 if (res.ok) setSingleData(await res.json());
             } catch (e) { console.error(e); }
@@ -317,7 +317,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                     {syncProgress && <div><strong>Total Stored Videos:</strong> {syncProgress.total_stored_videos}</div>}
                 </div>
                 {syncProgress?.sample_video && (
-                     <div style={{ marginTop: '1rem' }}>
+                    <div style={{ marginTop: '1rem' }}>
                         <strong>Sample Video from Sync:</strong>
                         <VideoTable
                             videos={[syncProgress.sample_video]}
@@ -368,7 +368,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
     };
 
     const handleResyncChannel = async () => {
-         if (!singleData || !('custom_url' in singleData)) return;
+        if (!singleData || !('custom_url' in singleData)) return;
         const channel = singleData as YoutubeChannel;
         const channelId = channel.youtube_id;
 
@@ -383,7 +383,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
             // 1. Delete
             const delRes = await fetch(`/api/youtube/channel/${channelId}`, { method: 'DELETE' });
             if (!delRes.ok) {
-                 const json = await delRes.json();
+                const json = await delRes.json();
                 throw new Error(json.message || json.error || 'Failed to delete channel for resync');
             }
 
@@ -480,7 +480,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                         {isChannel && (
                             <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--color-text-dim)' }}>
                                 <div><strong>Sync Status:</strong></div>
-                                <div>Earliest: { (singleData as YoutubeChannel).sync_start_date ? new Date((singleData as YoutubeChannel).sync_start_date!).toLocaleDateString() : 'Never' }</div>
+                                <div>Earliest: {(singleData as YoutubeChannel).sync_start_date ? new Date((singleData as YoutubeChannel).sync_start_date!).toLocaleDateString() : 'Never'}</div>
                                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                     <button onClick={handleSync} disabled={syncing} style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}>{syncing ? 'Syncing...' : 'Sync Videos'}</button>
                                     <button
@@ -597,6 +597,47 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
         );
     };
 
+    const renderChannels = () => {
+        if (!channels || channels.length === 0) {
+            return <div style={{ marginTop: '2rem' }}>No channels found.</div>;
+        }
+
+        return (
+            <div style={{ marginTop: '2rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr>
+                            <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid var(--color-border)' }}>Channel</th>
+                            <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid var(--color-border)' }}>Videos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {channels.map((channel: any) => (
+                            <tr
+                                key={channel.youtube_id}
+                                onClick={() => fetchChannelDetail(channel.youtube_id)}
+                                style={{ cursor: 'pointer', borderBottom: '1px solid var(--color-border-dim)' }}
+                                className="hover:bg-gray-100 dark:hover:bg-gray-800"
+                            >
+                                <td style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    <img
+                                        src={channel.thumbnail_url}
+                                        alt={channel.title}
+                                        style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+                                    />
+                                    <span>{channel.title}</span>
+                                </td>
+                                <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                                    {channel.video_count?.toLocaleString() || 0}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
     return (
         <section>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -613,6 +654,12 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                         style={{ background: viewMode === 'search' ? 'var(--color-primary)' : 'transparent', color: viewMode === 'search' ? 'white' : 'inherit', border: 'none' }}
                     >
                         Search Database
+                    </button>
+                    <button
+                        onClick={() => { setViewMode('channels'); fetchChannels(); }}
+                        style={{ background: viewMode === 'channels' ? 'var(--color-primary)' : 'transparent', color: viewMode === 'channels' ? 'white' : 'inherit', border: 'none' }}
+                    >
+                        Channels
                     </button>
                 </div>
             </div>
@@ -640,7 +687,7 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             style={{ flex: 1 }}
                         />
-                         <select
+                        <select
                             value={selectedChannel}
                             onChange={(e) => setSelectedChannel(e.target.value)}
                             style={{ width: '200px' }}
@@ -656,6 +703,8 @@ export function YoutubeViewer({ sessionId }: YoutubeViewerProps = {}) {
                     {renderTable()}
                 </>
             )}
+            {viewMode === 'channels' && renderChannels()}
         </section>
+
     );
 }

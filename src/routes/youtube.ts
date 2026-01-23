@@ -25,6 +25,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
     best_thumbnail_url: z.string().nullable().optional(),
     best_thumbnail_width: z.number().nullable().optional(),
     best_thumbnail_height: z.number().nullable().optional(),
+
   });
 
   // Omit raw_json for the list view
@@ -161,51 +162,52 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
   // GET /api/youtube/channels
   app.openapi(
     createRoute({
-        method: 'get',
-        path: '/api/youtube/channels',
-        tags: ['YouTube'],
-        summary: 'List YouTube Channels',
-        description: 'Get a list of all synced YouTube channels.',
-        middleware: [requireAuth] as any,
-        responses: {
-            200: {
-                description: 'List of channels',
-                content: {
-                    'application/json': {
-                        schema: channelListSchema,
-                    },
-                },
+      method: 'get',
+      path: '/api/youtube/channels',
+      tags: ['YouTube'],
+      summary: 'List YouTube Channels',
+      description: 'Get a list of all synced YouTube channels.',
+      middleware: [requireAuth] as any,
+      responses: {
+        200: {
+          description: 'List of channels',
+          content: {
+            'application/json': {
+              schema: channelListSchema,
             },
-            500: {
-                description: 'Server error',
-                content: {
-                    'application/json': {
-                        schema: ErrorResponseSchema,
-                    },
-                },
-            },
+          },
         },
+        500: {
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
     }),
     async (c) => {
-        try {
-            // Select all columns EXCEPT raw_json and statistics
-            const sql = `
+      try {
+        // Select all columns EXCEPT raw_json and statistics
+        // Join with youtube_videos to get the latest published_at
+        const sql = `
                 SELECT
-                    youtube_id, title, description, custom_url, thumbnail_url,
-                    published_at, created_at, updated_at,
-                    upload_playlist_id, last_sync_token,
-                    view_count, subscriber_count, video_count, country,
-                    best_thumbnail_url, best_thumbnail_width, best_thumbnail_height
-                FROM youtube_channels
-                ORDER BY title ASC
+                    c.youtube_id, c.title, c.description, c.custom_url, c.thumbnail_url,
+                    c.published_at, c.created_at, c.updated_at,
+                    c.upload_playlist_id, c.last_sync_token,
+                    c.view_count, c.subscriber_count, c.video_count, c.country,
+                    c.best_thumbnail_url, c.best_thumbnail_width, c.best_thumbnail_height
+                FROM youtube_channels c
+                ORDER BY c.title ASC
             `;
-            const { results } = await c.env.DB.prepare(sql).all();
+        const { results } = await c.env.DB.prepare(sql).all();
 
-            return c.json({ channels: results }, 200);
-        } catch (error: any) {
-            console.error('YouTube Channels Error:', error);
-            return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
-        }
+        return c.json({ channels: results } as any, 200);
+      } catch (error: any) {
+        console.error('YouTube Channels Error:', error);
+        return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
+      }
     }
   );
 
@@ -439,12 +441,12 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           },
         },
         500: {
-            description: 'Server error',
-            content: {
-                'application/json': {
-                    schema: ErrorResponseSchema,
-                }
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
             }
+          }
         }
       },
     }),
@@ -457,7 +459,7 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
         return c.json(channel, 200);
       } catch (error: any) {
         if (error.message.includes('not found') || error.message.includes('Not Found')) {
-            return c.json({ error: 'NOT_FOUND', message: error.message }, 404);
+          return c.json({ error: 'NOT_FOUND', message: error.message }, 404);
         }
         console.error('YouTube API Error:', error);
         return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
@@ -497,12 +499,12 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
           },
         },
         500: {
-            description: 'Server error',
-            content: {
-                'application/json': {
-                    schema: ErrorResponseSchema,
-                }
+          description: 'Server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
             }
+          }
         }
       },
     }),
@@ -514,8 +516,8 @@ export function registerYoutubeRoutes(app: OpenAPIHono<{ Bindings: Env }>) {
         const video = await service.getVideo(id);
         return c.json(video, 200);
       } catch (error: any) {
-         if (error.message.includes('not found') || error.message.includes('Not Found')) {
-            return c.json({ error: 'NOT_FOUND', message: error.message }, 404);
+        if (error.message.includes('not found') || error.message.includes('Not Found')) {
+          return c.json({ error: 'NOT_FOUND', message: error.message }, 404);
         }
         console.error('YouTube API Error:', error);
         return c.json({ error: 'INTERNAL_ERROR', message: error.message }, 500);
