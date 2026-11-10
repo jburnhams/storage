@@ -32,10 +32,10 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.11.0",
-    "zod": "^4.2.1"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.12.1",
+    "@cloudflare/vitest-pool-workers": "^0.12.21",
     "@cloudflare/workers-types": "^4.20251225.0",
     "@playwright/test": "^1.57.0",
     "@testing-library/jest-dom": "^6.9.1",
@@ -47,11 +47,11 @@
     "@vitest/coverage-v8": "^3.2.4",
     "esbuild": "^0.27.2",
     "jsdom": "^27.3.0",
-    "miniflare": "^4.20260107.0",
+    "miniflare": "^4.20260310.0",
     "playwright": "^1.57.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.0",
     "vitest": "^3.2.4",
-    "wrangler": "^4.54.0"
+    "wrangler": "^4.72.0"
   }
 }
